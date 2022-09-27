@@ -4,19 +4,24 @@ use nix::unistd::chdir;
 use nix::unistd::pivot_root;
 use oci_spec::runtime::Mount;
 use std::fs::{create_dir_all, remove_dir_all};
-use std::{error::Error, path::Path};
+use std::path::Path;
+
+use crate::error::RuntimeError;
 
 /// `mount_rootfs` changes the propagation type of the root mount
 /// from shared to private, and then remounts the root mount to remove it
 /// from the original file system.
-pub fn mount_rootfs(rootfs: &Path) -> Result<(), Box<dyn Error>> {
+pub fn mount_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
     mount(
         None::<&str>,
         "/",
         None::<&str>,
         MsFlags::MS_PRIVATE | MsFlags::MS_REC,
         None::<&str>,
-    )?;
+    )
+    .map_err(|err| RuntimeError {
+        message: format!("failed to mount the rootfs: {}", err),
+    })?;
 
     mount(
         Some(rootfs),
@@ -24,30 +29,53 @@ pub fn mount_rootfs(rootfs: &Path) -> Result<(), Box<dyn Error>> {
         None::<&str>,
         MsFlags::MS_BIND | MsFlags::MS_REC,
         None::<&str>,
-    )?;
+    )
+    .map_err(|err| RuntimeError {
+        message: format!("failed to mount the rootfs: {}", err),
+    })?;
 
     Ok(())
 }
 
 /// `pivot_rootfs` changes the root mount in the mount namespace.
-pub fn pivot_rootfs(rootfs: &Path) -> Result<(), Box<dyn Error>> {
-    chdir(rootfs)?;
-    create_dir_all(rootfs.join("root_archive"))?;
-    // Move the root mount to `root_archive`
-    pivot_root(rootfs.as_os_str(), rootfs.join("root_archive").as_os_str())?;
+pub fn pivot_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
+    chdir(rootfs).map_err(|err| RuntimeError {
+        message: format!("failed to run chdir: {}", err),
+    })?;
 
-    umount2("./root_archive", MntFlags::MNT_DETACH)?;
-    remove_dir_all("./root_archive")?;
-    chdir("/")?;
+    create_dir_all(rootfs.join("root_archive")).map_err(|err| RuntimeError {
+        message: format!("failed to create ./root_archive: {}", err),
+    })?;
+
+    // Move the root mount to `root_archive`
+    pivot_root(rootfs.as_os_str(), rootfs.join("root_archive").as_os_str()).map_err(|err| {
+        RuntimeError {
+            message: format!("failed to run pivot_root: {}", err),
+        }
+    })?;
+
+    umount2("./root_archive", MntFlags::MNT_DETACH).map_err(|err| RuntimeError {
+        message: format!("failed to unmount ./root_archive: {}", err),
+    })?;
+
+    remove_dir_all("./root_archive").map_err(|err| RuntimeError {
+        message: format!("failed to remove ./root_archive: {}", err),
+    })?;
+
+    chdir("/").map_err(|err| RuntimeError {
+        message: format!("failed to run chdir: {}", err),
+    })?;
     Ok(())
 }
 
 /// `oci_mount` accepts a `mount` struct defined in the bundle configuration
 /// and mounts the source to the destination with specified options
-pub fn oci_mount(rootfs: &Path, m: &Mount) -> Result<(), Box<dyn Error>> {
+pub fn oci_mount(rootfs: &Path, m: &Mount) -> Result<(), RuntimeError> {
     let destination = rootfs.join(m.destination());
     if !destination.exists() {
-        create_dir_all(&destination)?;
+        create_dir_all(&destination).map_err(|err| RuntimeError {
+            message: format!("failed to create {}: {}", destination.display(), err),
+        })?;
     }
 
     let mount_flags = {
@@ -64,7 +92,10 @@ pub fn oci_mount(rootfs: &Path, m: &Mount) -> Result<(), Box<dyn Error>> {
         m.typ().as_deref(),
         mount_flags,
         None::<&str>,
-    )?;
+    )
+    .map_err(|err| RuntimeError {
+        message: format!("failed to mount to {}: {}", destination.display(), err),
+    })?;
 
     Ok(())
 }

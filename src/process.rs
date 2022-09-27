@@ -1,6 +1,10 @@
-use nix::{sched::{CloneFlags, clone}, unistd::Pid};
+use nix::{
+    sched::{clone, CloneFlags},
+    unistd::Pid,
+};
 use oci_spec::runtime::{LinuxNamespace, LinuxNamespaceType};
-use std::error::Error;
+
+use crate::error::RuntimeError;
 
 fn namespace_to_clone_flag(namespace: &LinuxNamespace) -> CloneFlags {
     match namespace.typ() {
@@ -18,17 +22,20 @@ fn namespace_to_clone_flag(namespace: &LinuxNamespace) -> CloneFlags {
 /// Linux namespaces specified in `namespace_list`
 pub fn clone_process(
     function: impl Fn() -> isize,
-    namespace_list: &Vec<LinuxNamespace>,
-) -> Result<Pid, Box<dyn Error>> {
+    namespace_list: &[LinuxNamespace],
+) -> Result<Pid, RuntimeError> {
     let clone_flags = namespace_list
         .iter()
-        .map(|namespace| namespace_to_clone_flag(namespace))
-        .reduce(|flag_1, flag_2| flag_1 | flag_2 )
+        .map(namespace_to_clone_flag)
+        .reduce(|flag_1, flag_2| flag_1 | flag_2)
         .unwrap_or(CloneFlags::empty());
 
     const STACK_SIZE: usize = 4 * 1024 * 1024;
-    let ref mut stack: [u8; STACK_SIZE] = [0; STACK_SIZE];
+    let stack: &mut [u8; STACK_SIZE] = &mut [0; STACK_SIZE];
 
-    let pid = clone(Box::new(function), stack, clone_flags, None)?;
+    let pid = clone(Box::new(function), stack, clone_flags, None).map_err(|err| RuntimeError {
+        message: format!("failed to clone(): {}", err.desc()),
+    })?;
+
     Ok(pid)
 }
