@@ -2,3 +2,10 @@
 name = "oci-impl"
 version = "0.1.0"
 edition = "2021"
+authors = ["Xiaoyang Liu <siujoeng.lau@gmail.com>"]
+description = "Implementation of the Open Container Initiative Runtime Specification"
+
+[dependencies]
+clap = { version = "3.2.22", features = ["derive"] }
+nix = "0.25.0"
+oci-spec = "0.5.8"
