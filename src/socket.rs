@@ -1,3 +1,4 @@
+use std::fs::remove_file;
 use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -75,6 +76,14 @@ impl SocketServer {
     }
 }
 
+impl Drop for SocketServer {
+    fn drop(&mut self) {
+        if self.path.try_exists().unwrap() {
+            remove_file(&self.path).unwrap();
+        }
+    }
+}
+
 pub struct SocketClient {
     path: PathBuf,
     stream: UnixStream,
@@ -106,5 +115,58 @@ impl SocketClient {
                 message: format!("failed to write to the client: {}", err),
             })?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::socket::{SocketClient, SocketServer};
+    use std::thread;
+    use std::{fs::remove_file, path::Path};
+
+    #[test]
+    fn test_server_write() {
+        let socket_path = Path::new("/tmp/test_server_write.sock");
+        if socket_path.try_exists().unwrap() {
+            remove_file(socket_path).unwrap();
+        }
+
+        let mut server = SocketServer::bind(socket_path.to_path_buf()).unwrap();
+        let mut client = SocketClient::connect(socket_path.to_path_buf()).unwrap();
+
+        let server_thread = thread::spawn(move || {
+            server.listen().unwrap();
+            server.write(String::from("test_server_write")).unwrap();
+        });
+
+        let client_thread = thread::spawn(move || {
+            assert_eq!(client.read().unwrap(), String::from("test_server_write"));
+        });
+
+        server_thread.join().unwrap();
+        client_thread.join().unwrap();
+    }
+
+    #[test]
+    fn test_client_write() {
+        let socket_path = Path::new("/tmp/test_client_write.sock");
+        if socket_path.try_exists().unwrap() {
+            remove_file(socket_path).unwrap();
+        }
+
+        let mut server = SocketServer::bind(socket_path.to_path_buf()).unwrap();
+        let mut client = SocketClient::connect(socket_path.to_path_buf()).unwrap();
+
+        let server_thread = thread::spawn(move || {
+            server.listen().unwrap();
+            assert_eq!(server.read().unwrap(), String::from("test_client_write"));
+        });
+
+        let client_thread = thread::spawn(move || {
+            client.write(String::from("test_client_write")).unwrap();
+        });
+
+        server_thread.join().unwrap();
+        client_thread.join().unwrap();
     }
 }
