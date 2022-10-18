@@ -38,7 +38,7 @@ fn to_sflag(flag: LinuxDeviceType) -> SFlag {
     }
 }
 
-fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeError> {
+pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeError> {
     let path = &rootfs.join(device.path());
 
     mknod(

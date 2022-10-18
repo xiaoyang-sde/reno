@@ -8,6 +8,14 @@ pub struct RuntimeError {
     pub message: String,
 }
 
+impl RuntimeError {
+    pub fn new(message: &str) -> Self {
+        RuntimeError {
+            message: String::from(message),
+        }
+    }
+}
+
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.message)

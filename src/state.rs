@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     fs::{read_to_string, File},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::error::RuntimeError;
@@ -31,7 +31,7 @@ pub struct State {
 }
 
 impl State {
-    fn new(id: String, bundle: PathBuf) -> Self {
+    pub fn new(id: String, bundle: PathBuf) -> Self {
         State {
             oci_version: String::from(OCI_VERSION),
             id,
@@ -42,7 +42,7 @@ impl State {
         }
     }
 
-    fn load(container_path: PathBuf) -> Result<Self, RuntimeError> {
+    pub fn load(container_path: &Path) -> Result<Self, RuntimeError> {
         let state_file_path = &container_path.join("state.json");
         let state_json = read_to_string(state_file_path).map_err(|err| RuntimeError {
             message: format!(
@@ -59,7 +59,7 @@ impl State {
         Ok(state)
     }
 
-    fn persist(&self, container_path: PathBuf) -> Result<(), RuntimeError> {
+    pub fn persist(&self, container_path: &Path) -> Result<(), RuntimeError> {
         let state_json = serde_json::to_string(&self).map_err(|err| RuntimeError {
             message: format!("failed to serialize the state to JSON: {}", err),
         })?;
