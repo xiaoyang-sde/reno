@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use serde_json::to_string;
 
 use crate::container::fork_container;
 use crate::state::Status;
@@ -31,6 +32,16 @@ pub enum OCISubcommand {
 
     #[clap(about = "delete a container")]
     Delete { id: String },
+}
+
+pub fn state(id: &String) -> Result<(), RuntimeError> {
+    let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
+    let state = State::load(&container_root_path)?;
+    let serialized_state = to_string(&state).map_err(|err| RuntimeError {
+        message: format!("failed to serialize the state: {}", err)
+    })?;
+    print!("{}", serialized_state);
+    Ok(())
 }
 
 pub fn create(id: &String, bundle: &String) -> Result<(), RuntimeError> {
