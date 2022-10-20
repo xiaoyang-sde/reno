@@ -18,24 +18,25 @@ fn namespace_to_clone_flag(namespace: &LinuxNamespace) -> CloneFlags {
     }
 }
 
-/// `clone_process` creates a child process that invokes `function` in seperated
+/// `clone_child` creates a child process that invokes `function` in seperated
 /// Linux namespaces specified in `namespace_list`
-pub fn clone_process(
-    function: impl Fn() -> isize,
-    namespace_list: &[LinuxNamespace],
+pub fn clone_child(
+    child_fn: impl FnMut() -> isize,
+    namespaces: &[LinuxNamespace],
 ) -> Result<Pid, RuntimeError> {
-    let clone_flags = namespace_list
+    const STACK_SIZE: usize = 4 * 1024 * 1024;
+    let mut stack: [u8; STACK_SIZE] = [0; STACK_SIZE];
+
+    let clone_flags = namespaces
         .iter()
         .map(namespace_to_clone_flag)
         .reduce(|flag_1, flag_2| flag_1 | flag_2)
         .unwrap_or(CloneFlags::empty());
 
-    const STACK_SIZE: usize = 4 * 1024 * 1024;
-    let stack: &mut [u8; STACK_SIZE] = &mut [0; STACK_SIZE];
-
-    let pid = clone(Box::new(function), stack, clone_flags, None).map_err(|err| RuntimeError {
-        message: format!("failed to clone(): {}", err.desc()),
-    })?;
+    let pid =
+        clone(Box::new(child_fn), &mut stack, clone_flags, None).map_err(|err| RuntimeError {
+            message: format!("failed to invoke clone(): {}", err),
+        })?;
 
     Ok(pid)
 }

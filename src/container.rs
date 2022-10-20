@@ -4,6 +4,7 @@ use crate::{
     device::{create_default_device, create_default_symlink, create_device},
     error::RuntimeError,
     mount::{mount_rootfs, oci_mount, pivot_rootfs},
+    process::clone_child,
     socket::{SocketClient, SocketServer},
     state::State,
 };
@@ -13,43 +14,14 @@ use nix::unistd::Gid;
 use nix::unistd::Uid;
 use nix::{
     fcntl::{open, OFlag},
+    sched::setns,
     sched::CloneFlags,
-    sched::{clone, setns},
     sys::stat::Mode,
     unistd::{chdir, execvp, sethostname, Pid},
 };
-use oci_spec::runtime::{LinuxNamespace, LinuxNamespaceType, Spec};
+use oci_spec::runtime::{LinuxNamespace, Spec};
 use std::env::set_var;
 use std::os::unix::io::AsRawFd;
-
-fn clone_child(
-    child_fn: impl FnMut() -> isize,
-    namespaces: &[LinuxNamespace],
-) -> Result<Pid, RuntimeError> {
-    const STACK_SIZE: usize = 4 * 1024 * 1024;
-    let mut stack: [u8; STACK_SIZE] = [0; STACK_SIZE];
-
-    let clone_flags = namespaces
-        .iter()
-        .map(|namespace| match namespace.typ() {
-            LinuxNamespaceType::Mount => CloneFlags::CLONE_NEWNS,
-            LinuxNamespaceType::Cgroup => CloneFlags::CLONE_NEWCGROUP,
-            LinuxNamespaceType::Uts => CloneFlags::CLONE_NEWUTS,
-            LinuxNamespaceType::Ipc => CloneFlags::CLONE_NEWIPC,
-            LinuxNamespaceType::User => CloneFlags::CLONE_NEWUSER,
-            LinuxNamespaceType::Pid => CloneFlags::CLONE_NEWPID,
-            LinuxNamespaceType::Network => CloneFlags::CLONE_NEWNET,
-        })
-        .reduce(|flag_1, flag_2| flag_1 | flag_2)
-        .unwrap_or(CloneFlags::empty());
-
-    let pid =
-        clone(Box::new(child_fn), &mut stack, clone_flags, None).map_err(|err| RuntimeError {
-            message: format!("failed to invoke clone(): {}", err),
-        })?;
-
-    Ok(pid)
-}
 
 pub fn fork_container(
     spec: &Spec,
@@ -166,9 +138,14 @@ pub fn fork_container(
                 setgid(Gid::from_raw(process.user().gid())).unwrap();
 
                 chdir(process.cwd()).unwrap();
+
+                container_socket_server
+                    .write("started\n".to_string())
+                    .unwrap();
+
                 if let Err(err) = execvp(&command, &arguments) {
                     container_socket_server
-                        .write(format!("container error: {}", err))
+                        .write(format!("container error: {}\n", err))
                         .unwrap();
                     exit(1);
                 }
