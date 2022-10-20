@@ -91,7 +91,7 @@ pub fn fork_container(
 
             if let Err(err) = mount_rootfs(rootfs) {
                 container_socket_server
-                    .write(format!("container error: {}", err))
+                    .write(format!("container error: {}\n", err))
                     .unwrap();
                 exit(1);
             }
@@ -100,7 +100,7 @@ pub fn fork_container(
                 for mount in mounts {
                     if let Err(err) = oci_mount(rootfs, mount) {
                         container_socket_server
-                            .write(format!("container error: {}", err))
+                            .write(format!("container error: {}\n", err))
                             .unwrap();
                         exit(1);
                     }
@@ -112,7 +112,7 @@ pub fn fork_container(
                     for device in devices {
                         if let Err(err) = create_device(rootfs, device) {
                             container_socket_server
-                                .write(format!("container error: {}", err))
+                                .write(format!("container error: {}\n", err))
                                 .unwrap();
                             exit(1);
                         }
@@ -130,7 +130,7 @@ pub fn fork_container(
 
             if let Err(err) = pivot_rootfs(rootfs) {
                 container_socket_server
-                    .write(format!("container error: {}", err))
+                    .write(format!("container error: {}\n", err))
                     .unwrap();
                 exit(1);
             }
@@ -138,6 +138,11 @@ pub fn fork_container(
             if let Some(hostname) = spec.hostname() {
                 sethostname(hostname).unwrap();
             }
+
+            container_socket_server
+                .write("created\n".to_string())
+                .unwrap();
+            container_socket_server.listen().unwrap();
 
             if let Some(process) = spec.process() {
                 let command = CString::new(process.args().as_ref().unwrap()[0].as_bytes()).unwrap();

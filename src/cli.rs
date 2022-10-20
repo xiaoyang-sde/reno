@@ -5,11 +5,9 @@ use crate::container::fork_container;
 use crate::socket::{SocketClient, SocketServer};
 use crate::state::Status;
 use crate::{error::RuntimeError, state::State};
-use core::time;
 use oci_spec::runtime::Spec;
 use std::fs::create_dir_all;
 use std::path::Path;
-use std::thread;
 
 const OCI_IMPL_ROOT: &str = "/tmp/oci-impl";
 
@@ -85,10 +83,17 @@ pub fn create(id: &String, bundle: &String) -> Result<(), RuntimeError> {
     )?;
 
     init_socket_server.listen().unwrap();
-    let _ = SocketClient::connect(container_socket_path)?;
+    let mut container_socket_client = SocketClient::connect(container_socket_path)?;
 
-    state.pid = pid.as_raw();
-    state.status = Status::Created;
-    state.persist(&container_root_path)?;
-    Ok(())
+    let container_message = container_socket_client.read()?;
+    if container_message == "created\n" {
+        state.pid = pid.as_raw();
+        state.status = Status::Created;
+        state.persist(&container_root_path)?;
+        Ok(())
+    } else {
+        Err(RuntimeError {
+            message: format!("failed to create the container: {}", container_message),
+        })
+    }
 }

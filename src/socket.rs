@@ -1,5 +1,5 @@
 use std::fs::remove_file;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -45,11 +45,10 @@ impl SocketServer {
         let mut buffer = String::new();
         match &mut self.stream {
             Some(stream) => {
-                stream
-                    .read_to_string(&mut buffer)
-                    .map_err(|err| RuntimeError {
-                        message: format!("failed to read from the client: {}", err),
-                    })?;
+                let mut reader = BufReader::new(stream);
+                reader.read_line(&mut buffer).map_err(|err| RuntimeError {
+                    message: format!("failed to read from the client: {}", err),
+                })?;
                 Ok(buffer)
             }
             None => Err(RuntimeError {
@@ -66,6 +65,9 @@ impl SocketServer {
                     .map_err(|err| RuntimeError {
                         message: format!("failed to write to the client: {}", err),
                     })?;
+                stream.flush().map_err(|err| RuntimeError {
+                    message: format!("failed to flush the write buffer: {}", err),
+                })?;
                 Ok(())
             }
             None => Err(RuntimeError {
@@ -84,7 +86,6 @@ impl Drop for SocketServer {
 }
 
 pub struct SocketClient {
-    path: PathBuf,
     stream: UnixStream,
 }
 
@@ -94,16 +95,15 @@ impl SocketClient {
             message: format!("failed to connect to {}: {}", path.display(), err),
         })?;
 
-        Ok(SocketClient { path, stream })
+        Ok(SocketClient { stream })
     }
 
     pub fn read(&mut self) -> Result<String, RuntimeError> {
         let mut buffer = String::new();
-        self.stream
-            .read_to_string(&mut buffer)
-            .map_err(|err| RuntimeError {
-                message: format!("failed to read from the client: {}", err),
-            })?;
+        let mut reader = BufReader::new(&self.stream);
+        reader.read_line(&mut buffer).map_err(|err| RuntimeError {
+            message: format!("failed to read from the client: {}", err),
+        })?;
         Ok(buffer)
     }
 
