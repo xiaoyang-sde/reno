@@ -27,7 +27,12 @@ pub enum OCISubcommand {
     State { id: String },
 
     #[clap(about = "create a container")]
-    Create { id: String, bundle: String },
+    Create {
+        id: String,
+
+        #[clap(long)]
+        bundle: String,
+    },
 
     #[clap(about = "start a container")]
     Start { id: String },
