@@ -1,5 +1,6 @@
 use std::fs::remove_file;
 use std::io::{Read, Write};
+use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
@@ -111,6 +112,15 @@ impl SocketClient {
             .write_all(message.as_bytes())
             .map_err(|err| RuntimeError {
                 message: format!("failed to write to the client: {}", err),
+            })?;
+        Ok(())
+    }
+
+    pub fn shutdown(&self) -> Result<(), RuntimeError> {
+        self.stream
+            .shutdown(Shutdown::Both)
+            .map_err(|err| RuntimeError {
+                message: format!("failed to shutdown the stream: {}", err),
             })?;
         Ok(())
     }

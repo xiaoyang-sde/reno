@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use serde_json::to_string;
 
 use crate::container::fork_container;
-use crate::socket::SocketClient;
+use crate::socket::{SocketClient, SocketServer};
 use crate::state::Status;
 use crate::{error::RuntimeError, state::State};
 use core::time;
@@ -67,15 +67,24 @@ pub fn create(id: &String, bundle: &String) -> Result<(), RuntimeError> {
     let mut state = State::new(id.to_string(), bundle.to_path_buf());
     state.persist(&container_root_path)?;
 
-    let container_socket_path = container_root_path.join("container.sock");
-
     let namespaces = match &spec.linux() {
         Some(linux) => linux.namespaces().clone().unwrap_or_default(),
         None => Vec::new(),
     };
-    let pid = fork_container(&spec, &state, &namespaces, &container_socket_path)?;
 
-    thread::sleep(time::Duration::from_secs(1));
+    let init_socket_path = container_root_path.join("init.sock");
+    let mut init_socket_server = SocketServer::bind(init_socket_path.to_path_buf()).unwrap();
+
+    let container_socket_path = container_root_path.join("container.sock");
+    let pid = fork_container(
+        &spec,
+        &state,
+        &namespaces,
+        &init_socket_path,
+        &container_socket_path,
+    )?;
+
+    init_socket_server.listen().unwrap();
     let _ = SocketClient::connect(container_socket_path)?;
 
     state.pid = pid.as_raw();

@@ -4,7 +4,7 @@ use crate::{
     device::{create_default_device, create_default_symlink, create_device},
     error::RuntimeError,
     mount::{mount_rootfs, oci_mount, pivot_rootfs},
-    socket::SocketServer,
+    socket::{SocketClient, SocketServer},
     state::State,
 };
 use nix::unistd::setgid;
@@ -55,19 +55,23 @@ pub fn fork_container(
     spec: &Spec,
     _state: &State,
     namespaces: &Vec<LinuxNamespace>,
-    socket_path: &Path,
+    init_socket_path: &Path,
+    container_socket_path: &Path,
 ) -> Result<Pid, RuntimeError> {
     clone_child(
         || {
-            let mut socket_server = SocketServer::bind(socket_path.to_path_buf()).unwrap();
-            socket_server.listen().unwrap();
+            let mut container_socket_server =
+                SocketServer::bind(container_socket_path.to_path_buf()).unwrap();
+            let init_socket_client = SocketClient::connect(init_socket_path.to_path_buf()).unwrap();
+            init_socket_client.shutdown().unwrap();
+            container_socket_server.listen().unwrap();
 
             for namespace in namespaces {
                 if let Some(path) = namespace.path() {
                     let fd = match open(path.as_os_str(), OFlag::empty(), Mode::empty()) {
                         Ok(fd) => fd,
                         Err(err) => {
-                            socket_server
+                            container_socket_server
                                 .write(format!("container error: {}", err))
                                 .unwrap();
                             exit(1);
@@ -75,7 +79,7 @@ pub fn fork_container(
                     };
 
                     if let Err(err) = setns(fd.as_raw_fd(), CloneFlags::empty()) {
-                        socket_server
+                        container_socket_server
                             .write(format!("container error: {}", err))
                             .unwrap();
                         exit(1);
@@ -86,7 +90,7 @@ pub fn fork_container(
             let rootfs = spec.root().as_ref().unwrap().path();
 
             if let Err(err) = mount_rootfs(rootfs) {
-                socket_server
+                container_socket_server
                     .write(format!("container error: {}", err))
                     .unwrap();
                 exit(1);
@@ -95,7 +99,7 @@ pub fn fork_container(
             if let Some(mounts) = &spec.mounts() {
                 for mount in mounts {
                     if let Err(err) = oci_mount(rootfs, mount) {
-                        socket_server
+                        container_socket_server
                             .write(format!("container error: {}", err))
                             .unwrap();
                         exit(1);
@@ -107,7 +111,7 @@ pub fn fork_container(
                 if let Some(devices) = linux.devices() {
                     for device in devices {
                         if let Err(err) = create_device(rootfs, device) {
-                            socket_server
+                            container_socket_server
                                 .write(format!("container error: {}", err))
                                 .unwrap();
                             exit(1);
@@ -118,14 +122,14 @@ pub fn fork_container(
 
             create_default_device(rootfs);
             if let Err(err) = create_default_symlink(rootfs) {
-                socket_server
+                container_socket_server
                     .write(format!("container error: {}", err))
                     .unwrap();
                 exit(1);
             }
 
             if let Err(err) = pivot_rootfs(rootfs) {
-                socket_server
+                container_socket_server
                     .write(format!("container error: {}", err))
                     .unwrap();
                 exit(1);
@@ -158,7 +162,7 @@ pub fn fork_container(
 
                 chdir(process.cwd()).unwrap();
                 if let Err(err) = execvp(&command, &arguments) {
-                    socket_server
+                    container_socket_server
                         .write(format!("container error: {}", err))
                         .unwrap();
                     exit(1);
