@@ -8,7 +8,7 @@ mod mount;
 mod socket;
 mod state;
 
-use crate::cli::{create, state, OCI, OCISubcommand};
+use crate::cli::{create, state, OCISubcommand, OCI};
 use crate::error::RuntimeError;
 
 fn main() -> Result<(), RuntimeError> {

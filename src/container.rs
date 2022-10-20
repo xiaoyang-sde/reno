@@ -83,8 +83,7 @@ pub fn fork_container(
                 }
             }
 
-            let root = spec.root().as_ref().unwrap();
-            let rootfs = root.path();
+            let rootfs = spec.root().as_ref().unwrap().path();
 
             if let Err(err) = mount_rootfs(rootfs) {
                 socket_server
@@ -118,7 +117,6 @@ pub fn fork_container(
             }
 
             create_default_device(rootfs);
-
             if let Err(err) = create_default_symlink(rootfs) {
                 socket_server
                     .write(format!("container error: {}", err))

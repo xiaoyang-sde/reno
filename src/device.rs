@@ -22,8 +22,10 @@ pub fn create_default_symlink(rootfs: &Path) -> Result<(), RuntimeError> {
     ];
 
     for (source, destination) in default_symlink_list {
-        symlink(source, rootfs.join(destination)).map_err(|err| RuntimeError {
-            message: format!("failed to create default symlink: {}", err),
+        symlink(source, rootfs.join(destination.trim_start_matches('/'))).map_err(|err| {
+            RuntimeError {
+                message: format!("failed to create default symlink: {}", err),
+            }
         })?;
     }
     Ok(())
@@ -39,7 +41,7 @@ fn to_sflag(flag: LinuxDeviceType) -> SFlag {
 }
 
 pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeError> {
-    let path = &rootfs.join(device.path());
+    let path = &rootfs.join(device.path().display().to_string().trim_start_matches('/'));
 
     mknod(
         path,

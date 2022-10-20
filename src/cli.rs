@@ -2,10 +2,14 @@ use clap::{Parser, Subcommand};
 use serde_json::to_string;
 
 use crate::container::fork_container;
+use crate::socket::SocketClient;
 use crate::state::Status;
 use crate::{error::RuntimeError, state::State};
+use core::time;
 use oci_spec::runtime::Spec;
+use std::fs::create_dir_all;
 use std::path::Path;
+use std::thread;
 
 const OCI_IMPL_ROOT: &str = "/tmp/oci-impl";
 
@@ -38,9 +42,9 @@ pub fn state(id: &String) -> Result<(), RuntimeError> {
     let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
     let state = State::load(&container_root_path)?;
     let serialized_state = to_string(&state).map_err(|err| RuntimeError {
-        message: format!("failed to serialize the state: {}", err)
+        message: format!("failed to serialize the state: {}", err),
     })?;
-    print!("{}", serialized_state);
+    println!("{}", serialized_state);
     Ok(())
 }
 
@@ -50,11 +54,16 @@ pub fn create(id: &String, bundle: &String) -> Result<(), RuntimeError> {
         message: format!("the bundle doesn't exist: {}", err),
     })?;
 
-    let spec = Spec::load(bundle).map_err(|err| RuntimeError {
+    let bundle_spec = bundle.join("config.json");
+    let spec = Spec::load(bundle_spec).map_err(|err| RuntimeError {
         message: format!("failed to load the bundle configuration: {}", err),
     })?;
 
     let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
+    create_dir_all(&container_root_path).map_err(|err| RuntimeError {
+        message: format!("failed to create the container root path: {}", err),
+    })?;
+
     let mut state = State::new(id.to_string(), bundle.to_path_buf());
     state.persist(&container_root_path)?;
 
@@ -64,11 +73,13 @@ pub fn create(id: &String, bundle: &String) -> Result<(), RuntimeError> {
         Some(linux) => linux.namespaces().clone().unwrap_or_default(),
         None => Vec::new(),
     };
-
     let pid = fork_container(&spec, &state, &namespaces, &container_socket_path)?;
+
+    thread::sleep(time::Duration::from_secs(1));
+    let _ = SocketClient::connect(container_socket_path)?;
+
     state.pid = pid.as_raw();
     state.status = Status::Created;
     state.persist(&container_root_path)?;
-
     Ok(())
 }

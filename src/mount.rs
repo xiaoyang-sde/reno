@@ -71,7 +71,12 @@ pub fn pivot_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
 /// `oci_mount` accepts a `mount` struct defined in the bundle configuration
 /// and mounts the source to the destination with specified options
 pub fn oci_mount(rootfs: &Path, m: &Mount) -> Result<(), RuntimeError> {
-    let destination = rootfs.join(m.destination());
+    let destination = rootfs.join(
+        m.destination()
+            .display()
+            .to_string()
+            .trim_start_matches('/'),
+    );
     if !destination.exists() {
         create_dir_all(&destination).map_err(|err| RuntimeError {
             message: format!("failed to create {}: {}", destination.display(), err),

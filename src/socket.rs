@@ -29,14 +29,12 @@ impl SocketServer {
     }
 
     pub fn listen(&mut self) -> Result<(), RuntimeError> {
-        if let Some(stream) = self.listener.incoming().next() {
-            match stream {
-                Ok(stream) => self.stream = Some(stream),
-                Err(err) => {
-                    return Err(RuntimeError {
-                        message: format!("failed to accept the incoming connection: {}", err),
-                    })
-                }
+        match self.listener.accept() {
+            Ok((stream, _)) => self.stream = Some(stream),
+            Err(err) => {
+                return Err(RuntimeError {
+                    message: format!("failed to accept the incoming connection: {}", err),
+                })
             }
         }
         Ok(())
