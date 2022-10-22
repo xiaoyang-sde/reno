@@ -94,14 +94,18 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
     let mut container_socket_client = SocketClient::connect(container_socket_path)?;
 
     let container_message = container_socket_client.read()?;
-    if container_message == "created\n" {
+    if container_message.status == Status::Created {
         state.pid = pid.as_raw();
         state.status = Status::Created;
         state.persist(&container_root_path)?;
         Ok(())
+    } else if let Some(err) = container_message.error {
+        Err(RuntimeError {
+            message: format!("failed to create the container: {}", err),
+        })
     } else {
         Err(RuntimeError {
-            message: format!("failed to create the container: {}", container_message),
+            message: format!("failed to create the container"),
         })
     }
 }
@@ -125,13 +129,17 @@ pub fn start(id: &str) -> Result<(), RuntimeError> {
     let mut container_socket_client = SocketClient::connect(container_socket_path)?;
 
     let container_message = container_socket_client.read()?;
-    if container_message == "started\n" {
+    if container_message.status == Status::Running {
         state.status = Status::Running;
         state.persist(&container_root_path)?;
         Ok(())
+    } else if let Some(err) = container_message.error {
+        Err(RuntimeError {
+            message: format!("failed to start the container: {}", err),
+        })
     } else {
         Err(RuntimeError {
-            message: format!("failed to start the container: {}", container_message),
+            message: format!("failed to start the container"),
         })
     }
 }

@@ -4,7 +4,16 @@ use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::RuntimeError;
+use crate::state::Status;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SocketMessage {
+    pub status: Status,
+    pub error: Option<RuntimeError>,
+}
 
 pub struct SocketServer {
     path: PathBuf,
@@ -41,7 +50,7 @@ impl SocketServer {
         Ok(())
     }
 
-    pub fn read(&mut self) -> Result<String, RuntimeError> {
+    pub fn read(&mut self) -> Result<SocketMessage, RuntimeError> {
         let mut buffer = String::new();
         match &mut self.stream {
             Some(stream) => {
@@ -49,7 +58,12 @@ impl SocketServer {
                 reader.read_line(&mut buffer).map_err(|err| RuntimeError {
                     message: format!("failed to read from the client: {}", err),
                 })?;
-                Ok(buffer)
+
+                let message: SocketMessage =
+                    serde_json::from_str(&buffer).map_err(|err| RuntimeError {
+                        message: format!("failed to deserialize the client message: {}", err),
+                    })?;
+                Ok(message)
             }
             None => Err(RuntimeError {
                 message: String::from("failed to connect to a client"),
@@ -57,7 +71,12 @@ impl SocketServer {
         }
     }
 
-    pub fn write(&mut self, message: String) -> Result<(), RuntimeError> {
+    pub fn write(&mut self, message: SocketMessage) -> Result<(), RuntimeError> {
+        let mut message = serde_json::to_string(&message).map_err(|err| RuntimeError {
+            message: format!("failed to serialize the client message: {}", err),
+        })?;
+        message.push('\n');
+
         match &mut self.stream {
             Some(stream) => {
                 stream
@@ -98,16 +117,25 @@ impl SocketClient {
         Ok(SocketClient { stream })
     }
 
-    pub fn read(&mut self) -> Result<String, RuntimeError> {
+    pub fn read(&mut self) -> Result<SocketMessage, RuntimeError> {
         let mut buffer = String::new();
         let mut reader = BufReader::new(&self.stream);
         reader.read_line(&mut buffer).map_err(|err| RuntimeError {
             message: format!("failed to read from the client: {}", err),
         })?;
-        Ok(buffer)
+
+        let message: SocketMessage = serde_json::from_str(&buffer).map_err(|err| RuntimeError {
+            message: format!("failed to parse the client message: {}", err),
+        })?;
+        Ok(message)
     }
 
-    pub fn write(&mut self, message: String) -> Result<(), RuntimeError> {
+    pub fn write(&mut self, message: SocketMessage) -> Result<(), RuntimeError> {
+        let mut message = serde_json::to_string(&message).map_err(|err| RuntimeError {
+            message: format!("failed to serialize the client message: {}", err),
+        })?;
+        message.push('\n');
+
         self.stream
             .write_all(message.as_bytes())
             .map_err(|err| RuntimeError {
@@ -123,58 +151,5 @@ impl SocketClient {
                 message: format!("failed to shutdown the stream: {}", err),
             })?;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::socket::{SocketClient, SocketServer};
-    use std::thread;
-    use std::{fs::remove_file, path::Path};
-
-    #[test]
-    fn test_server_write() {
-        let socket_path = Path::new("/tmp/test_server_write.sock");
-        if socket_path.try_exists().unwrap() {
-            remove_file(socket_path).unwrap();
-        }
-
-        let mut server = SocketServer::bind(socket_path.to_path_buf()).unwrap();
-        let mut client = SocketClient::connect(socket_path.to_path_buf()).unwrap();
-
-        let server_thread = thread::spawn(move || {
-            server.listen().unwrap();
-            server.write(String::from("test_server_write")).unwrap();
-        });
-
-        let client_thread = thread::spawn(move || {
-            assert_eq!(client.read().unwrap(), String::from("test_server_write"));
-        });
-
-        server_thread.join().unwrap();
-        client_thread.join().unwrap();
-    }
-
-    #[test]
-    fn test_client_write() {
-        let socket_path = Path::new("/tmp/test_client_write.sock");
-        if socket_path.try_exists().unwrap() {
-            remove_file(socket_path).unwrap();
-        }
-
-        let mut server = SocketServer::bind(socket_path.to_path_buf()).unwrap();
-        let mut client = SocketClient::connect(socket_path.to_path_buf()).unwrap();
-
-        let server_thread = thread::spawn(move || {
-            server.listen().unwrap();
-            assert_eq!(server.read().unwrap(), String::from("test_client_write"));
-        });
-
-        let client_thread = thread::spawn(move || {
-            client.write(String::from("test_client_write")).unwrap();
-        });
-
-        server_thread.join().unwrap();
-        client_thread.join().unwrap();
     }
 }

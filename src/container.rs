@@ -1,12 +1,12 @@
-use std::{ffi::CString, path::Path, process::exit};
+use std::{ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit};
 
 use crate::{
     device::{create_default_device, create_default_symlink, create_device},
     error::RuntimeError,
     mount::{mount_rootfs, oci_mount, pivot_rootfs},
     process::clone_child,
-    socket::{SocketClient, SocketServer},
-    state::State,
+    socket::{SocketClient, SocketMessage, SocketServer},
+    state::{State, Status},
 };
 use nix::unistd::setgid;
 use nix::unistd::setuid;
@@ -21,7 +21,6 @@ use nix::{
 };
 use oci_spec::runtime::{LinuxNamespace, Spec};
 use std::env::set_var;
-use std::os::unix::io::AsRawFd;
 
 pub fn fork_container(
     spec: &Spec,
@@ -44,7 +43,12 @@ pub fn fork_container(
                         Ok(fd) => fd,
                         Err(err) => {
                             container_socket_server
-                                .write(format!("container error: {}", err))
+                                .write(SocketMessage {
+                                    status: Status::Creating,
+                                    error: Some(RuntimeError {
+                                        message: format!("container error: {}", err),
+                                    }),
+                                })
                                 .unwrap();
                             exit(1);
                         }
@@ -52,7 +56,12 @@ pub fn fork_container(
 
                     if let Err(err) = setns(fd.as_raw_fd(), CloneFlags::empty()) {
                         container_socket_server
-                            .write(format!("container error: {}", err))
+                            .write(SocketMessage {
+                                status: Status::Creating,
+                                error: Some(RuntimeError {
+                                    message: format!("container error: {}", err),
+                                }),
+                            })
                             .unwrap();
                         exit(1);
                     }
@@ -63,7 +72,12 @@ pub fn fork_container(
 
             if let Err(err) = mount_rootfs(rootfs) {
                 container_socket_server
-                    .write(format!("container error: {}\n", err))
+                    .write(SocketMessage {
+                        status: Status::Creating,
+                        error: Some(RuntimeError {
+                            message: format!("container error: {}", err),
+                        }),
+                    })
                     .unwrap();
                 exit(1);
             }
@@ -72,7 +86,12 @@ pub fn fork_container(
                 for mount in mounts {
                     if let Err(err) = oci_mount(rootfs, mount) {
                         container_socket_server
-                            .write(format!("container error: {}\n", err))
+                            .write(SocketMessage {
+                                status: Status::Creating,
+                                error: Some(RuntimeError {
+                                    message: format!("container error: {}", err),
+                                }),
+                            })
                             .unwrap();
                         exit(1);
                     }
@@ -84,7 +103,12 @@ pub fn fork_container(
                     for device in devices {
                         if let Err(err) = create_device(rootfs, device) {
                             container_socket_server
-                                .write(format!("container error: {}\n", err))
+                                .write(SocketMessage {
+                                    status: Status::Creating,
+                                    error: Some(RuntimeError {
+                                        message: format!("container error: {}", err),
+                                    }),
+                                })
                                 .unwrap();
                             exit(1);
                         }
@@ -95,14 +119,24 @@ pub fn fork_container(
             create_default_device(rootfs);
             if let Err(err) = create_default_symlink(rootfs) {
                 container_socket_server
-                    .write(format!("container error: {}", err))
+                    .write(SocketMessage {
+                        status: Status::Creating,
+                        error: Some(RuntimeError {
+                            message: format!("container error: {}", err),
+                        }),
+                    })
                     .unwrap();
                 exit(1);
             }
 
             if let Err(err) = pivot_rootfs(rootfs) {
                 container_socket_server
-                    .write(format!("container error: {}\n", err))
+                    .write(SocketMessage {
+                        status: Status::Creating,
+                        error: Some(RuntimeError {
+                            message: format!("container error: {}", err),
+                        }),
+                    })
                     .unwrap();
                 exit(1);
             }
@@ -112,7 +146,10 @@ pub fn fork_container(
             }
 
             container_socket_server
-                .write("created\n".to_string())
+                .write(SocketMessage {
+                    status: Status::Created,
+                    error: None,
+                })
                 .unwrap();
             container_socket_server.listen().unwrap();
 
@@ -140,12 +177,20 @@ pub fn fork_container(
                 chdir(process.cwd()).unwrap();
 
                 container_socket_server
-                    .write("started\n".to_string())
+                    .write(SocketMessage {
+                        status: Status::Running,
+                        error: None,
+                    })
                     .unwrap();
 
                 if let Err(err) = execvp(&command, &arguments) {
                     container_socket_server
-                        .write(format!("container error: {}\n", err))
+                        .write(SocketMessage {
+                            status: Status::Stopped,
+                            error: Some(RuntimeError {
+                                message: format!("container error: {}", err),
+                            }),
+                        })
                         .unwrap();
                     exit(1);
                 }

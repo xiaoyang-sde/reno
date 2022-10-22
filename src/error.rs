@@ -3,17 +3,11 @@ use std::{
     fmt::{Display, Formatter, Result},
 };
 
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeError {
     pub message: String,
-}
-
-impl RuntimeError {
-    pub fn new(message: &str) -> Self {
-        RuntimeError {
-            message: String::from(message),
-        }
-    }
 }
 
 impl Display for RuntimeError {
