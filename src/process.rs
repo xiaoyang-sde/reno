@@ -3,6 +3,7 @@ use nix::{
     unistd::Pid,
 };
 use oci_spec::runtime::{LinuxNamespace, LinuxNamespaceType};
+use procfs::process::{ProcState, Process};
 
 use crate::error::RuntimeError;
 
@@ -39,4 +40,20 @@ pub fn clone_child(
         })?;
 
     Ok(pid)
+}
+
+pub fn inspect_process(pid: i32) -> Result<ProcState, RuntimeError> {
+    let process = Process::new(pid).map_err(|err| RuntimeError {
+        message: format!("failed to inspect the process {}: {}", pid, err),
+    })?;
+
+    let process_stat = process.stat().map_err(|err| RuntimeError {
+        message: format!("failed to inspect the process {}: {}", pid, err),
+    })?;
+
+    let state = process_stat.state().map_err(|err| RuntimeError {
+        message: format!("failed to inspect the process {}: {}", pid, err),
+    })?;
+
+    Ok(state)
 }

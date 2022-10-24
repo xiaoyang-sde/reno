@@ -31,8 +31,7 @@ pub fn fork_container(
 ) -> Result<Pid, RuntimeError> {
     clone_child(
         || {
-            let mut container_socket_server =
-                SocketServer::bind(container_socket_path).unwrap();
+            let mut container_socket_server = SocketServer::bind(container_socket_path).unwrap();
             let init_socket_client = SocketClient::connect(init_socket_path).unwrap();
             init_socket_client.shutdown().unwrap();
             container_socket_server.listen().unwrap();
@@ -193,6 +192,16 @@ pub fn fork_container(
                         .unwrap();
                     exit(1);
                 }
+            } else {
+                container_socket_server
+                    .write(SocketMessage {
+                        status: Status::Stopped,
+                        error: Some(RuntimeError {
+                            message: "container error: the 'process' doesn't exist".to_string(),
+                        }),
+                    })
+                    .unwrap();
+                exit(1);
             }
 
             0

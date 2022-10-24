@@ -2,7 +2,7 @@ use std::fs::remove_file;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 

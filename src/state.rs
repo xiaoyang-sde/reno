@@ -1,3 +1,4 @@
+use procfs::process::ProcState;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -6,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::error::RuntimeError;
+use crate::{error::RuntimeError, process::inspect_process};
 
 const OCI_VERSION: &str = "1.0.2";
 
@@ -80,5 +81,25 @@ impl State {
             })?;
 
         Ok(())
+    }
+
+    pub fn refresh(&mut self) {
+        if self.pid == -1 {
+            return;
+        }
+
+        if let Ok(state) = inspect_process(self.pid) {
+            match state {
+                ProcState::Running | ProcState::Sleeping | ProcState::Waiting => {
+                    self.status = Status::Running;
+                }
+                ProcState::Tracing | ProcState::Stopped | ProcState::Zombie | ProcState::Dead => {
+                    self.status = Status::Stopped;
+                }
+                _ => (),
+            }
+        } else {
+            self.status = Status::Stopped;
+        }
     }
 }

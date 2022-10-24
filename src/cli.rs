@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+
 use nix::unistd::Pid;
 use serde_json::to_string;
 
@@ -46,11 +46,15 @@ pub enum OCISubcommand {
 
 pub fn state(id: &str) -> Result<(), RuntimeError> {
     let container_root = Path::new(OCI_IMPL_ROOT).join(id);
-    let state = State::load(&container_root)?;
+    let mut state = State::load(&container_root)?;
+    state.refresh();
+
     let serialized_state = to_string(&state).map_err(|err| RuntimeError {
         message: format!("failed to serialize the state: {}", err),
     })?;
     println!("{}", serialized_state);
+
+    state.persist(&container_root)?;
     Ok(())
 }
 
@@ -60,7 +64,9 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
         message: format!("failed to check if the bundle exists: {}", err),
     })?;
     if !bundle_exists {
-        return Err(RuntimeError { message: String::from("the bundle doesn't exist") });
+        return Err(RuntimeError {
+            message: String::from("the bundle doesn't exist"),
+        });
     }
 
     let bundle_spec = bundle.join("config.json");
@@ -73,7 +79,9 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
         message: format!("failed to check if the container exists: {}", err),
     })?;
     if container_root_exists {
-        return Err(RuntimeError { message: String::from("the container exists") });
+        return Err(RuntimeError {
+            message: String::from("the container exists"),
+        });
     }
 
     create_dir_all(&container_root).map_err(|err| RuntimeError {
@@ -122,11 +130,9 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
 
 pub fn start(id: &str) -> Result<(), RuntimeError> {
     let container_root = Path::new(OCI_IMPL_ROOT).join(id);
-    container_root
-        .try_exists()
-        .map_err(|err| RuntimeError {
-            message: format!("the container doesn't exist: {}", err),
-        })?;
+    container_root.try_exists().map_err(|err| RuntimeError {
+        message: format!("the container doesn't exist: {}", err),
+    })?;
 
     let mut state = State::load(&container_root)?;
     if state.status != Status::Created {
@@ -140,10 +146,13 @@ pub fn start(id: &str) -> Result<(), RuntimeError> {
 
     let container_message = container_socket_client.read()?;
     if container_message.status == Status::Running {
-        state.status = Status::Running;
+        state.refresh();
         state.persist(&container_root)?;
         Ok(())
     } else if let Some(err) = container_message.error {
+        if err.message == "container error: the 'process' doesn't exist" {
+            return Ok(());
+        }
         Err(RuntimeError {
             message: format!("failed to start the container: {}", err),
         })
@@ -156,11 +165,9 @@ pub fn start(id: &str) -> Result<(), RuntimeError> {
 
 pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
     let container_root = Path::new(OCI_IMPL_ROOT).join(id);
-    container_root
-        .try_exists()
-        .map_err(|err| RuntimeError {
-            message: format!("the container doesn't exist: {}", err),
-        })?;
+    container_root.try_exists().map_err(|err| RuntimeError {
+        message: format!("the container doesn't exist: {}", err),
+    })?;
 
     let mut state = State::load(&container_root)?;
     if state.status != Status::Created && state.status != Status::Running {
@@ -175,6 +182,8 @@ pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
         "TERM" => Signal::SIGTERM,
         "STOP" => Signal::SIGSTOP,
         "KILL" => Signal::SIGKILL,
+        "USR1" => Signal::SIGUSR1,
+        "USR2" => Signal::SIGUSR2,
         _ => Signal::SIGKILL,
     };
 
@@ -183,28 +192,17 @@ pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
         message: format!("failed to kill the container: {}", err),
     })?;
 
-    let wait_status = waitpid(pid, Some(WaitPidFlag::WNOHANG)).map_err(|err| RuntimeError {
-        message: format!("failed to get the WaitStatus of the container: {}", err),
-    })?;
-
-    match wait_status {
-        WaitStatus::Exited(_, _) | WaitStatus::Signaled(_, _, _) => {
-            state.status = Status::Stopped;
-            state.persist(&container_root)?;
-        }
-        _ => (),
-    }
+    state.refresh();
+    state.persist(&container_root)?;
 
     Ok(())
 }
 
 pub fn delete(id: &str) -> Result<(), RuntimeError> {
     let container_root = Path::new(OCI_IMPL_ROOT).join(id);
-    container_root
-        .try_exists()
-        .map_err(|err| RuntimeError {
-            message: format!("the container doesn't exist: {}", err),
-        })?;
+    container_root.try_exists().map_err(|err| RuntimeError {
+        message: format!("the container doesn't exist: {}", err),
+    })?;
 
     let state = State::load(&container_root)?;
     if state.status != Status::Stopped {
