@@ -3,6 +3,7 @@ use nix::mount::{mount, MntFlags, MsFlags};
 use nix::unistd::chdir;
 use nix::unistd::pivot_root;
 use oci_spec::runtime::Mount;
+use std::ffi::OsString;
 use std::fs::{create_dir_all, remove_dir_all};
 use std::path::Path;
 
@@ -68,6 +69,62 @@ pub fn pivot_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
     Ok(())
 }
 
+fn options_to_mount_flags(m: &Mount) -> (MsFlags, OsString) {
+    let mut mount_flags = MsFlags::empty();
+    let mut mount_data = Vec::new();
+
+    if let Some(options) = &m.options() {
+        for option in options {
+            if let Some((is_clear, flag)) = match option.as_str() {
+                "defaults" => Some((false, MsFlags::empty())),
+                "ro" => Some((false, MsFlags::MS_RDONLY)),
+                "rw" => Some((true, MsFlags::MS_RDONLY)),
+                "suid" => Some((true, MsFlags::MS_NOSUID)),
+                "nosuid" => Some((false, MsFlags::MS_NOSUID)),
+                "dev" => Some((true, MsFlags::MS_NODEV)),
+                "nodev" => Some((false, MsFlags::MS_NODEV)),
+                "exec" => Some((true, MsFlags::MS_NOEXEC)),
+                "noexec" => Some((false, MsFlags::MS_NOEXEC)),
+                "sync" => Some((false, MsFlags::MS_SYNCHRONOUS)),
+                "async" => Some((true, MsFlags::MS_SYNCHRONOUS)),
+                "dirsync" => Some((false, MsFlags::MS_DIRSYNC)),
+                "remount" => Some((false, MsFlags::MS_REMOUNT)),
+                "mand" => Some((false, MsFlags::MS_MANDLOCK)),
+                "nomand" => Some((true, MsFlags::MS_MANDLOCK)),
+                "atime" => Some((true, MsFlags::MS_NOATIME)),
+                "noatime" => Some((false, MsFlags::MS_NOATIME)),
+                "diratime" => Some((true, MsFlags::MS_NODIRATIME)),
+                "nodiratime" => Some((false, MsFlags::MS_NODIRATIME)),
+                "bind" => Some((false, MsFlags::MS_BIND)),
+                "rbind" => Some((false, MsFlags::MS_BIND | MsFlags::MS_REC)),
+                "unbindable" => Some((false, MsFlags::MS_UNBINDABLE)),
+                "runbindable" => Some((false, MsFlags::MS_UNBINDABLE | MsFlags::MS_REC)),
+                "private" => Some((true, MsFlags::MS_PRIVATE)),
+                "rprivate" => Some((true, MsFlags::MS_PRIVATE | MsFlags::MS_REC)),
+                "shared" => Some((true, MsFlags::MS_SHARED)),
+                "rshared" => Some((true, MsFlags::MS_SHARED | MsFlags::MS_REC)),
+                "slave" => Some((true, MsFlags::MS_SLAVE)),
+                "rslave" => Some((true, MsFlags::MS_SLAVE | MsFlags::MS_REC)),
+                "relatime" => Some((true, MsFlags::MS_RELATIME)),
+                "norelatime" => Some((true, MsFlags::MS_RELATIME)),
+                "strictatime" => Some((true, MsFlags::MS_STRICTATIME)),
+                "nostrictatime" => Some((true, MsFlags::MS_STRICTATIME)),
+                _ => None,
+            } {
+                if is_clear {
+                    mount_flags &= !flag;
+                } else {
+                    mount_flags |= flag;
+                }
+            } else {
+                mount_data.push(option.as_str());
+            }
+        }
+    }
+
+    (mount_flags, mount_data.join(",").into())
+}
+
 /// `oci_mount` accepts a `mount` struct defined in the bundle configuration
 /// and mounts the source to the destination with specified options
 pub fn oci_mount(rootfs: &Path, m: &Mount) -> Result<(), RuntimeError> {
@@ -83,20 +140,14 @@ pub fn oci_mount(rootfs: &Path, m: &Mount) -> Result<(), RuntimeError> {
         })?;
     }
 
-    let mount_flags = {
-        if m.typ() == &Some(String::from("bind")) {
-            MsFlags::MS_BIND
-        } else {
-            MsFlags::empty()
-        }
-    };
+    let (mount_flags, mount_data) = options_to_mount_flags(m);
 
     mount(
         m.source().as_ref(),
         &destination,
         m.typ().as_deref(),
         mount_flags,
-        None::<&str>,
+        Some(mount_data).as_deref(),
     )
     .map_err(|err| RuntimeError {
         message: format!("failed to mount to {}: {}", destination.display(), err),
