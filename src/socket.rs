@@ -2,7 +2,7 @@ use std::fs::remove_file;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +22,7 @@ pub struct SocketServer {
 }
 
 impl SocketServer {
-    pub fn bind(path: PathBuf) -> Result<Self, RuntimeError> {
+    pub fn bind(path: &Path) -> Result<Self, RuntimeError> {
         let listener = UnixListener::bind(&path).map_err(|err| RuntimeError {
             message: format!(
                 "failed to bind the UnixListener to {}: {}",
@@ -32,7 +32,7 @@ impl SocketServer {
         })?;
 
         Ok(SocketServer {
-            path,
+            path: path.to_path_buf(),
             listener,
             stream: None,
         })
@@ -109,7 +109,7 @@ pub struct SocketClient {
 }
 
 impl SocketClient {
-    pub fn connect(path: PathBuf) -> Result<Self, RuntimeError> {
+    pub fn connect(path: &Path) -> Result<Self, RuntimeError> {
         let stream = UnixStream::connect(&path).map_err(|err| RuntimeError {
             message: format!("failed to connect to {}: {}", path.display(), err),
         })?;

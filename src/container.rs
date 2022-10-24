@@ -24,7 +24,7 @@ use std::env::set_var;
 
 pub fn fork_container(
     spec: &Spec,
-    _state: &State,
+    state: &State,
     namespaces: &Vec<LinuxNamespace>,
     init_socket_path: &Path,
     container_socket_path: &Path,
@@ -32,8 +32,8 @@ pub fn fork_container(
     clone_child(
         || {
             let mut container_socket_server =
-                SocketServer::bind(container_socket_path.to_path_buf()).unwrap();
-            let init_socket_client = SocketClient::connect(init_socket_path.to_path_buf()).unwrap();
+                SocketServer::bind(container_socket_path).unwrap();
+            let init_socket_client = SocketClient::connect(init_socket_path).unwrap();
             init_socket_client.shutdown().unwrap();
             container_socket_server.listen().unwrap();
 
@@ -68,8 +68,7 @@ pub fn fork_container(
                 }
             }
 
-            let rootfs = spec.root().as_ref().unwrap().path();
-
+            let rootfs = &state.bundle.join(spec.root().as_ref().unwrap().path());
             if let Err(err) = mount_rootfs(rootfs) {
                 container_socket_server
                     .write(SocketMessage {

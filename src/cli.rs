@@ -45,8 +45,8 @@ pub enum OCISubcommand {
 }
 
 pub fn state(id: &str) -> Result<(), RuntimeError> {
-    let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
-    let state = State::load(&container_root_path)?;
+    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    let state = State::load(&container_root)?;
     let serialized_state = to_string(&state).map_err(|err| RuntimeError {
         message: format!("failed to serialize the state: {}", err),
     })?;
@@ -56,32 +56,42 @@ pub fn state(id: &str) -> Result<(), RuntimeError> {
 
 pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
     let bundle = Path::new(bundle);
-    bundle.try_exists().map_err(|err| RuntimeError {
-        message: format!("the bundle doesn't exist: {}", err),
+    let bundle_exists = bundle.try_exists().map_err(|err| RuntimeError {
+        message: format!("failed to check if the bundle exists: {}", err),
     })?;
+    if !bundle_exists {
+        return Err(RuntimeError { message: String::from("the bundle doesn't exist") });
+    }
 
     let bundle_spec = bundle.join("config.json");
     let spec = Spec::load(bundle_spec).map_err(|err| RuntimeError {
         message: format!("failed to load the bundle configuration: {}", err),
     })?;
 
-    let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
-    create_dir_all(&container_root_path).map_err(|err| RuntimeError {
+    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    let container_root_exists = container_root.try_exists().map_err(|err| RuntimeError {
+        message: format!("failed to check if the container exists: {}", err),
+    })?;
+    if container_root_exists {
+        return Err(RuntimeError { message: String::from("the container exists") });
+    }
+
+    create_dir_all(&container_root).map_err(|err| RuntimeError {
         message: format!("failed to create the container root path: {}", err),
     })?;
 
     let mut state = State::new(id.to_string(), bundle.to_path_buf());
-    state.persist(&container_root_path)?;
+    state.persist(&container_root)?;
 
     let namespaces = match &spec.linux() {
         Some(linux) => linux.namespaces().clone().unwrap_or_default(),
         None => Vec::new(),
     };
 
-    let init_socket_path = container_root_path.join("init.sock");
-    let mut init_socket_server = SocketServer::bind(init_socket_path.to_path_buf()).unwrap();
+    let init_socket_path = container_root.join("init.sock");
+    let mut init_socket_server = SocketServer::bind(&init_socket_path).unwrap();
 
-    let container_socket_path = container_root_path.join("container.sock");
+    let container_socket_path = container_root.join("container.sock");
     let pid = fork_container(
         &spec,
         &state,
@@ -91,13 +101,13 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
     )?;
 
     init_socket_server.listen().unwrap();
-    let mut container_socket_client = SocketClient::connect(container_socket_path)?;
+    let mut container_socket_client = SocketClient::connect(&container_socket_path)?;
 
     let container_message = container_socket_client.read()?;
     if container_message.status == Status::Created {
         state.pid = pid.as_raw();
         state.status = Status::Created;
-        state.persist(&container_root_path)?;
+        state.persist(&container_root)?;
         Ok(())
     } else if let Some(err) = container_message.error {
         Err(RuntimeError {
@@ -105,33 +115,33 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
         })
     } else {
         Err(RuntimeError {
-            message: format!("failed to create the container"),
+            message: "failed to create the container".to_string(),
         })
     }
 }
 
 pub fn start(id: &str) -> Result<(), RuntimeError> {
-    let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
-    container_root_path
+    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    container_root
         .try_exists()
         .map_err(|err| RuntimeError {
             message: format!("the container doesn't exist: {}", err),
         })?;
 
-    let mut state = State::load(&container_root_path)?;
+    let mut state = State::load(&container_root)?;
     if state.status != Status::Created {
         return Err(RuntimeError {
             message: "the container is not in the 'Created' state".to_string(),
         });
     }
 
-    let container_socket_path = container_root_path.join("container.sock");
-    let mut container_socket_client = SocketClient::connect(container_socket_path)?;
+    let container_socket_path = container_root.join("container.sock");
+    let mut container_socket_client = SocketClient::connect(&container_socket_path)?;
 
     let container_message = container_socket_client.read()?;
     if container_message.status == Status::Running {
         state.status = Status::Running;
-        state.persist(&container_root_path)?;
+        state.persist(&container_root)?;
         Ok(())
     } else if let Some(err) = container_message.error {
         Err(RuntimeError {
@@ -139,27 +149,27 @@ pub fn start(id: &str) -> Result<(), RuntimeError> {
         })
     } else {
         Err(RuntimeError {
-            message: format!("failed to start the container"),
+            message: "failed to start the container".to_string(),
         })
     }
 }
 
 pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
-    let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
-    container_root_path
+    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    container_root
         .try_exists()
         .map_err(|err| RuntimeError {
             message: format!("the container doesn't exist: {}", err),
         })?;
 
-    let mut state = State::load(&container_root_path)?;
+    let mut state = State::load(&container_root)?;
     if state.status != Status::Created && state.status != Status::Running {
         return Err(RuntimeError {
             message: "the container is not in the 'Created' or 'Running' state".to_string(),
         });
     }
 
-    let signal = match &signal[..] {
+    let signal = match signal {
         "HUP" => Signal::SIGHUP,
         "INT" => Signal::SIGINT,
         "TERM" => Signal::SIGTERM,
@@ -180,7 +190,7 @@ pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
     match wait_status {
         WaitStatus::Exited(_, _) | WaitStatus::Signaled(_, _, _) => {
             state.status = Status::Stopped;
-            state.persist(&container_root_path)?;
+            state.persist(&container_root)?;
         }
         _ => (),
     }
@@ -189,21 +199,21 @@ pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
 }
 
 pub fn delete(id: &str) -> Result<(), RuntimeError> {
-    let container_root_path = Path::new(OCI_IMPL_ROOT).join(id);
-    container_root_path
+    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    container_root
         .try_exists()
         .map_err(|err| RuntimeError {
             message: format!("the container doesn't exist: {}", err),
         })?;
 
-    let state = State::load(&container_root_path)?;
+    let state = State::load(&container_root)?;
     if state.status != Status::Stopped {
         return Err(RuntimeError {
             message: "the container is not in the 'Stopped' state".to_string(),
         });
     }
 
-    remove_dir_all(container_root_path).map_err(|err| RuntimeError {
+    remove_dir_all(container_root).map_err(|err| RuntimeError {
         message: format!("failed to remove the container: {}", err),
     })?;
     Ok(())

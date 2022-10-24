@@ -50,7 +50,7 @@ pub fn pivot_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
     // `pivot_root` moves the root mount to `root_archive` and makes `rootfs` as the new root mount
     pivot_root(rootfs.as_os_str(), rootfs.join("root_archive").as_os_str()).map_err(|err| {
         RuntimeError {
-            message: format!("failed to run pivot_root: {}", err),
+            message: format!("failed to run pivot_root {}: {}", rootfs.display(), err),
         }
     })?;
 
