@@ -20,6 +20,7 @@ pub enum Status {
     Stopped,
 }
 
+/// The state of the container defined in the [runtime specification](https://github.com/opencontainers/runtime-spec/blob/main/runtime.md)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
@@ -43,6 +44,7 @@ impl State {
         }
     }
 
+    /// `load` reads the container state from `{container_path}/state.json`
     pub fn load(container_path: &Path) -> Result<Self, RuntimeError> {
         let state_file_path = &container_path.join("state.json");
         let state_json = read_to_string(state_file_path).map_err(|err| RuntimeError {
@@ -60,6 +62,7 @@ impl State {
         Ok(state)
     }
 
+    /// `persist` serializes the container state to JSON and writes it to `{container_path}/state.json`
     pub fn persist(&self, container_path: &Path) -> Result<(), RuntimeError> {
         let state_json = serde_json::to_string(&self).map_err(|err| RuntimeError {
             message: format!("failed to serialize the state to JSON: {}", err),
@@ -83,6 +86,7 @@ impl State {
         Ok(())
     }
 
+    /// `refresh` updates the container status based on the container process
     pub fn refresh(&mut self) {
         if self.pid == -1 {
             return;

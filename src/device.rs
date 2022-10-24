@@ -40,6 +40,7 @@ fn to_sflag(flag: LinuxDeviceType) -> SFlag {
     }
 }
 
+/// `create_device` creates a Linux device with `mknod`
 pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeError> {
     let path = &rootfs.join(device.path().display().to_string().trim_start_matches('/'));
 

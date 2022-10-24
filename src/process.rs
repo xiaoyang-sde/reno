@@ -42,17 +42,19 @@ pub fn clone_child(
     Ok(pid)
 }
 
+/// `inspect_process` inspects the status of the process in `/proc/<pid>/stat`
+/// and returns a variant of the `ProcState` enum
 pub fn inspect_process(pid: i32) -> Result<ProcState, RuntimeError> {
     let process = Process::new(pid).map_err(|err| RuntimeError {
         message: format!("failed to inspect the process {}: {}", pid, err),
     })?;
 
     let process_stat = process.stat().map_err(|err| RuntimeError {
-        message: format!("failed to inspect the process {}: {}", pid, err),
+        message: format!("failed to inspect the process status {}: {}", pid, err),
     })?;
 
     let state = process_stat.state().map_err(|err| RuntimeError {
-        message: format!("failed to inspect the process {}: {}", pid, err),
+        message: format!("failed to inspect the process state {}: {}", pid, err),
     })?;
 
     Ok(state)
