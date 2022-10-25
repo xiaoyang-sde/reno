@@ -4,6 +4,7 @@ mod cli;
 mod container;
 mod device;
 mod error;
+mod hook;
 mod mount;
 mod process;
 mod socket;

@@ -3,6 +3,7 @@ use std::{ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit};
 use crate::{
     device::{create_default_device, create_default_symlink, create_device},
     error::RuntimeError,
+    hook::run_hook,
     mount::{mount_rootfs, oci_mount, pivot_rootfs},
     process::clone_child,
     socket::{SocketClient, SocketMessage, SocketServer},
@@ -127,6 +128,36 @@ pub fn fork_container(
                 exit(1);
             }
 
+            if let Some(hostname) = spec.hostname() {
+                sethostname(hostname).unwrap();
+            }
+
+            container_socket_server
+                .write(SocketMessage {
+                    status: Status::Creating,
+                    error: None,
+                })
+                .unwrap();
+            container_socket_server.listen().unwrap();
+
+            if let Some(hooks) = spec.hooks() {
+                if let Some(create_container_hooks) = hooks.create_container() {
+                    for create_container_hook in create_container_hooks {
+                        if let Err(err) = run_hook(state, create_container_hook) {
+                            container_socket_server
+                                .write(SocketMessage {
+                                    status: Status::Stopped,
+                                    error: Some(RuntimeError {
+                                        message: format!("container error: {}", err),
+                                    }),
+                                })
+                                .unwrap();
+                            exit(1);
+                        }
+                    }
+                }
+            }
+
             if let Err(err) = pivot_rootfs(rootfs) {
                 container_socket_server
                     .write(SocketMessage {
@@ -139,10 +170,6 @@ pub fn fork_container(
                 exit(1);
             }
 
-            if let Some(hostname) = spec.hostname() {
-                sethostname(hostname).unwrap();
-            }
-
             container_socket_server
                 .write(SocketMessage {
                     status: Status::Created,
@@ -150,6 +177,24 @@ pub fn fork_container(
                 })
                 .unwrap();
             container_socket_server.listen().unwrap();
+
+            if let Some(hooks) = spec.hooks() {
+                if let Some(start_container_hooks) = hooks.start_container() {
+                    for start_container_hook in start_container_hooks {
+                        if let Err(err) = run_hook(state, start_container_hook) {
+                            container_socket_server
+                                .write(SocketMessage {
+                                    status: Status::Stopped,
+                                    error: Some(RuntimeError {
+                                        message: format!("container error: {}", err),
+                                    }),
+                                })
+                                .unwrap();
+                            exit(1);
+                        }
+                    }
+                }
+            }
 
             if let Some(process) = spec.process() {
                 let command = CString::new(process.args().as_ref().unwrap()[0].as_bytes()).unwrap();

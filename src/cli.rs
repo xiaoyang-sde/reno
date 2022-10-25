@@ -4,6 +4,7 @@ use nix::unistd::Pid;
 use serde_json::to_string;
 
 use crate::container::fork_container;
+use crate::hook::run_hook;
 use crate::socket::{SocketClient, SocketServer};
 use crate::state::Status;
 use crate::{error::RuntimeError, state::State};
@@ -109,9 +110,33 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
     )?;
 
     init_socket_server.listen().unwrap();
-    let mut container_socket_client = SocketClient::connect(&container_socket_path)?;
 
+    let mut container_socket_client = SocketClient::connect(&container_socket_path)?;
     let container_message = container_socket_client.read()?;
+    container_socket_client.shutdown()?;
+
+    if container_message.status == Status::Creating {
+        if let Some(hooks) = spec.hooks() {
+            if let Some(create_runtime_hooks) = hooks.create_runtime() {
+                for create_runtime_hook in create_runtime_hooks {
+                    run_hook(&state, create_runtime_hook)?;
+                }
+            }
+        }
+    } else if let Some(err) = container_message.error {
+        return Err(RuntimeError {
+            message: format!("failed to create the container: {}", err),
+        });
+    } else {
+        return Err(RuntimeError {
+            message: "failed to create the container".to_string(),
+        });
+    }
+
+    let mut container_socket_client = SocketClient::connect(&container_socket_path)?;
+    let container_message = container_socket_client.read()?;
+    container_socket_client.shutdown()?;
+
     if container_message.status == Status::Created {
         state.pid = pid.as_raw();
         state.status = Status::Created;
@@ -141,13 +166,35 @@ pub fn start(id: &str) -> Result<(), RuntimeError> {
         });
     }
 
+    let bundle_spec = state.bundle.join("config.json");
+    let spec = Spec::load(bundle_spec).map_err(|err| RuntimeError {
+        message: format!("failed to load the bundle configuration: {}", err),
+    })?;
+
+    if let Some(hooks) = spec.hooks() {
+        if let Some(pre_start_hooks) = hooks.prestart() {
+            for pre_start_hook in pre_start_hooks {
+                run_hook(&state, pre_start_hook)?;
+            }
+        }
+    }
+
     let container_socket_path = container_root.join("container.sock");
     let mut container_socket_client = SocketClient::connect(&container_socket_path)?;
-
     let container_message = container_socket_client.read()?;
+    container_socket_client.shutdown()?;
+
     if container_message.status == Status::Running {
         state.refresh();
         state.persist(&container_root)?;
+
+        if let Some(hooks) = spec.hooks() {
+            if let Some(post_start_hooks) = hooks.poststart() {
+                for post_start_hook in post_start_hooks {
+                    run_hook(&state, post_start_hook)?;
+                }
+            }
+        }
         Ok(())
     } else if let Some(err) = container_message.error {
         if err.message == "container error: the 'process' doesn't exist" {
@@ -214,5 +261,19 @@ pub fn delete(id: &str) -> Result<(), RuntimeError> {
     remove_dir_all(container_root).map_err(|err| RuntimeError {
         message: format!("failed to remove the container: {}", err),
     })?;
+
+    let bundle_spec = state.bundle.join("config.json");
+    let spec = Spec::load(bundle_spec).map_err(|err| RuntimeError {
+        message: format!("failed to load the bundle configuration: {}", err),
+    })?;
+
+    if let Some(hooks) = spec.hooks() {
+        if let Some(post_stop_hooks) = hooks.poststop() {
+            for post_stop_hook in post_stop_hooks {
+                run_hook(&state, post_stop_hook)?;
+            }
+        }
+    }
+
     Ok(())
 }
