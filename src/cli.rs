@@ -12,7 +12,7 @@ use oci_spec::runtime::Spec;
 use std::fs::{create_dir_all, remove_dir_all};
 use std::path::Path;
 
-const OCI_IMPL_ROOT: &str = "/tmp/oci-impl";
+const RENO_ROOT: &str = "/tmp/reno";
 
 #[derive(Parser, Debug)]
 #[clap(version, about)]
@@ -45,7 +45,7 @@ pub enum OCISubcommand {
 }
 
 pub fn state(id: &str) -> Result<(), RuntimeError> {
-    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    let container_root = Path::new(RENO_ROOT).join(id);
     let mut state = State::load(&container_root)?;
     state.refresh();
 
@@ -74,7 +74,7 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
         message: format!("failed to load the bundle configuration: {}", err),
     })?;
 
-    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    let container_root = Path::new(RENO_ROOT).join(id);
     let container_root_exists = container_root.try_exists().map_err(|err| RuntimeError {
         message: format!("failed to check if the container exists: {}", err),
     })?;
@@ -129,7 +129,7 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
 }
 
 pub fn start(id: &str) -> Result<(), RuntimeError> {
-    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    let container_root = Path::new(RENO_ROOT).join(id);
     container_root.try_exists().map_err(|err| RuntimeError {
         message: format!("the container doesn't exist: {}", err),
     })?;
@@ -164,7 +164,7 @@ pub fn start(id: &str) -> Result<(), RuntimeError> {
 }
 
 pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
-    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    let container_root = Path::new(RENO_ROOT).join(id);
     container_root.try_exists().map_err(|err| RuntimeError {
         message: format!("the container doesn't exist: {}", err),
     })?;
@@ -199,7 +199,7 @@ pub fn kill(id: &str, signal: &str) -> Result<(), RuntimeError> {
 }
 
 pub fn delete(id: &str) -> Result<(), RuntimeError> {
-    let container_root = Path::new(OCI_IMPL_ROOT).join(id);
+    let container_root = Path::new(RENO_ROOT).join(id);
     container_root.try_exists().map_err(|err| RuntimeError {
         message: format!("the container doesn't exist: {}", err),
     })?;
