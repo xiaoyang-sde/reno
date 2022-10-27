@@ -1,4 +1,7 @@
-use std::{ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit};
+use std::fs::write;
+use std::{
+    ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit,
+};
 
 use crate::{
     device::{create_default_device, create_default_symlink, create_device},
@@ -168,6 +171,28 @@ pub fn fork_container(
                     })
                     .unwrap();
                 exit(1);
+            }
+
+            if let Some(linux) = spec.linux() {
+                if let Some(sysctl) = linux.sysctl() {
+                    for (field, value) in sysctl {
+                        let sysctl_path = Path::new("/proc/sys").join(field.replace('.', "/"));
+                        if let Err(err) = write(sysctl_path, value) {
+                            container_socket_server
+                                .write(SocketMessage {
+                                    status: Status::Stopped,
+                                    error: Some(RuntimeError {
+                                        message: format!(
+                                            "failed to set {} to {}: {}",
+                                            field, value, err
+                                        ),
+                                    }),
+                                })
+                                .unwrap();
+                            exit(1);
+                        }
+                    }
+                }
             }
 
             container_socket_server
