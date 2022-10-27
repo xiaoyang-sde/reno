@@ -4,7 +4,9 @@ use nix::sys::stat::{makedev, mknod, Mode};
 use nix::unistd::{chown, Gid, Uid};
 use oci_spec::runtime::{LinuxDevice, LinuxDeviceBuilder, LinuxDeviceType};
 
+use std::fs::{set_permissions, Permissions};
 use std::os::unix::fs::symlink;
+use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -19,6 +21,7 @@ pub fn create_default_symlink(rootfs: &Path) -> Result<(), RuntimeError> {
         ("/proc/self/fd/0", "/dev/stdin"),
         ("/proc/self/fd/1", "/dev/stdout"),
         ("/proc/self/fd/2", "/dev/stderr"),
+        ("pts/ptmx", "/dev/ptmx"),
     ];
 
     for (source, destination) in default_symlink_list {
@@ -58,6 +61,10 @@ pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeE
         ),
     })?;
 
+    set_permissions(path, Permissions::from_mode(0o660)).map_err(|err| RuntimeError {
+        message: format!("failed to change the permission of {}: {}", path.display(), err),
+    })?;
+
     if let Some(uid) = device.uid() {
         chown(path, Some(Uid::from_raw(uid)), None).map_err(|err| RuntimeError {
             message: format!("failed to create default symlink: {}", err.desc()),
@@ -76,14 +83,13 @@ pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeE
 /// [default devices](https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md#default-devices)
 /// specified in OCI runtime specification
 pub fn create_default_device(rootfs: &Path) {
-    let default_device_list: [(&str, LinuxDeviceType, u32, u32, u32, u32, u32); 7] = [
+    let default_device_list: [(&str, LinuxDeviceType, u32, u32, u32, u32, u32); 6] = [
         ("/dev/null", LinuxDeviceType::C, 1, 3, 0o066, 0, 0),
         ("/dev/zero", LinuxDeviceType::C, 1, 5, 0o066, 0, 0),
         ("/dev/full", LinuxDeviceType::C, 1, 7, 0o066, 0, 0),
         ("/dev/random", LinuxDeviceType::C, 1, 8, 0o066, 0, 0),
         ("/dev/urandom", LinuxDeviceType::C, 1, 9, 0o066, 0, 0),
         ("/dev/tty", LinuxDeviceType::C, 5, 0, 0o066, 0, 0),
-        ("/dev/ptmx", LinuxDeviceType::C, 5, 2, 0o066, 0, 0),
     ];
 
     for (path, typ, major, minor, file_mode, uid, gid) in default_device_list {
