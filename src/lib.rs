@@ -1,3 +1,4 @@
+pub mod cap;
 pub mod cli;
 pub mod container;
 pub mod device;

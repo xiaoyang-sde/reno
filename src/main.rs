@@ -1,5 +1,6 @@
 use clap::Parser;
 
+mod cap;
 mod cli;
 mod container;
 mod device;

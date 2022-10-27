@@ -62,7 +62,11 @@ pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeE
     })?;
 
     set_permissions(path, Permissions::from_mode(0o660)).map_err(|err| RuntimeError {
-        message: format!("failed to change the permission of {}: {}", path.display(), err),
+        message: format!(
+            "failed to change the permission of {}: {}",
+            path.display(),
+            err
+        ),
     })?;
 
     if let Some(uid) = device.uid() {

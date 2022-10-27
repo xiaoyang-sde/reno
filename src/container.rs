@@ -1,8 +1,8 @@
 use std::fs::write;
-use std::{
-    ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit,
-};
 
+use std::{ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit};
+
+use crate::cap::set_cap;
 use crate::{
     device::{create_default_device, create_default_symlink, create_device},
     error::RuntimeError,
@@ -12,6 +12,7 @@ use crate::{
     socket::{SocketClient, SocketMessage, SocketServer},
     state::{State, Status},
 };
+use caps::CapSet;
 use nix::unistd::setgid;
 use nix::unistd::setuid;
 use nix::unistd::Gid;
@@ -241,6 +242,48 @@ pub fn fork_container(
 
                 setuid(Uid::from_raw(process.user().uid())).unwrap();
                 setgid(Gid::from_raw(process.user().gid())).unwrap();
+
+                if let Some(capabilities) = process.capabilities() {
+                    if let Some(ambient_cap_set) = capabilities.ambient() {
+                        for ambient_cap in ambient_cap_set {
+                            if let Err(err) = set_cap(CapSet::Ambient, ambient_cap) {
+                                println!("container error: {}", err);
+                            }
+                        }
+                    }
+
+                    if let Some(effective_cap_set) = capabilities.effective() {
+                        for effective_cap in effective_cap_set {
+                            if let Err(err) = set_cap(CapSet::Effective, effective_cap) {
+                                println!("container error: {}", err);
+                            }
+                        }
+                    }
+
+                    if let Some(inheritable_cap_set) = capabilities.inheritable() {
+                        for inheritable_cap in inheritable_cap_set {
+                            if let Err(err) = set_cap(CapSet::Inheritable, inheritable_cap) {
+                                println!("container error: {}", err);
+                            }
+                        }
+                    }
+
+                    if let Some(permitted_cap_set) = capabilities.permitted() {
+                        for permitted_cap in permitted_cap_set {
+                            if let Err(err) = set_cap(CapSet::Permitted, permitted_cap) {
+                                println!("container error: {}", err);
+                            }
+                        }
+                    }
+
+                    if let Some(bounding_cap_set) = capabilities.bounding() {
+                        for bounding_cap in bounding_cap_set {
+                            if let Err(err) = set_cap(CapSet::Bounding, bounding_cap) {
+                                println!("container error: {}", err);
+                            }
+                        }
+                    }
+                }
 
                 chdir(process.cwd()).unwrap();
 
