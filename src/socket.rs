@@ -23,7 +23,7 @@ pub struct SocketServer {
 
 impl SocketServer {
     pub fn bind(path: &Path) -> Result<Self, RuntimeError> {
-        let listener = UnixListener::bind(&path).map_err(|err| RuntimeError {
+        let listener = UnixListener::bind(path).map_err(|err| RuntimeError {
             message: format!(
                 "failed to bind the UnixListener to {}: {}",
                 path.display(),
@@ -110,7 +110,7 @@ pub struct SocketClient {
 
 impl SocketClient {
     pub fn connect(path: &Path) -> Result<Self, RuntimeError> {
-        let stream = UnixStream::connect(&path).map_err(|err| RuntimeError {
+        let stream = UnixStream::connect(path).map_err(|err| RuntimeError {
             message: format!("failed to connect to {}: {}", path.display(), err),
         })?;
 

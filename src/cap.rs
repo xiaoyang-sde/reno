@@ -1,34 +1,38 @@
-use caps::{all, drop, has_cap, CapSet, Capability as CapsCap};
-use oci_spec::runtime::Capability as OCICap;
+use std::collections::HashSet;
+
+use caps::{drop, read, set, CapSet, Capability as CapsCap};
+use oci_spec::runtime::{Capabilities, Capability as OCICap};
 
 use crate::error::RuntimeError;
 
-pub fn set_cap(cap_set: CapSet, cap: &OCICap) -> Result<(), RuntimeError> {
-    let cap = oci_spec_to_caps(cap);
+pub fn set_cap(cap_set: CapSet, capabilities: &Capabilities) -> Result<(), RuntimeError> {
+    let capabilities: &HashSet<CapsCap> = &capabilities.iter().map(oci_spec_to_caps).collect();
     match cap_set {
         CapSet::Bounding => {
-            if all().contains(&cap) {
-                drop(None, CapSet::Bounding, cap).map_err(|err| RuntimeError {
-                    message: format!("failed to drop {}: {}", cap, err),
+            let existing_capabilities =
+                read(None, CapSet::Bounding).map_err(|err| RuntimeError {
+                    message: format!("failed to read the bounding capabilities: {}", err),
+                })?;
+            for cap in existing_capabilities.difference(capabilities) {
+                drop(None, CapSet::Bounding, *cap).map_err(|err| RuntimeError {
+                    message: format!(
+                        "failed to drop {} from the bounding capabilities: {}",
+                        cap, err
+                    ),
                 })?;
             }
         }
         _ => {
-            let has_cap = has_cap(None, cap_set, cap).map_err(|err| RuntimeError {
-                message: format!("failed to check if {} exists: {}", cap, err),
+            set(None, cap_set, capabilities).map_err(|err| RuntimeError {
+                message: format!("failed to set the capabilities: {}", err),
             })?;
-            if !has_cap {
-                caps::raise(None, cap_set, cap).map_err(|err| RuntimeError {
-                    message: format!("failed to raise {}: {}", cap, err),
-                })?;
-            }
         }
     }
 
     Ok(())
 }
 
-fn oci_spec_to_caps(cap: &OCICap) -> CapsCap {
+pub fn oci_spec_to_caps(cap: &OCICap) -> CapsCap {
     match cap {
         OCICap::AuditControl => CapsCap::CAP_AUDIT_CONTROL,
         OCICap::AuditRead => CapsCap::CAP_AUDIT_READ,

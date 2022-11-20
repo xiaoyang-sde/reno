@@ -240,50 +240,25 @@ pub fn fork_container(
                     }
                 }
 
-                setuid(Uid::from_raw(process.user().uid())).unwrap();
-                setgid(Gid::from_raw(process.user().gid())).unwrap();
-
                 if let Some(capabilities) = process.capabilities() {
-                    if let Some(ambient_cap_set) = capabilities.ambient() {
-                        for ambient_cap in ambient_cap_set {
-                            if let Err(err) = set_cap(CapSet::Ambient, ambient_cap) {
-                                println!("container error: {}", err);
-                            }
-                        }
-                    }
-
-                    if let Some(effective_cap_set) = capabilities.effective() {
-                        for effective_cap in effective_cap_set {
-                            if let Err(err) = set_cap(CapSet::Effective, effective_cap) {
-                                println!("container error: {}", err);
-                            }
-                        }
-                    }
-
-                    if let Some(inheritable_cap_set) = capabilities.inheritable() {
-                        for inheritable_cap in inheritable_cap_set {
-                            if let Err(err) = set_cap(CapSet::Inheritable, inheritable_cap) {
-                                println!("container error: {}", err);
-                            }
-                        }
-                    }
-
-                    if let Some(permitted_cap_set) = capabilities.permitted() {
-                        for permitted_cap in permitted_cap_set {
-                            if let Err(err) = set_cap(CapSet::Permitted, permitted_cap) {
-                                println!("container error: {}", err);
-                            }
-                        }
-                    }
-
-                    if let Some(bounding_cap_set) = capabilities.bounding() {
-                        for bounding_cap in bounding_cap_set {
-                            if let Err(err) = set_cap(CapSet::Bounding, bounding_cap) {
+                    let capabilities_list = [
+                        (capabilities.bounding(), CapSet::Bounding),
+                        (capabilities.effective(), CapSet::Effective),
+                        (capabilities.permitted(), CapSet::Permitted),
+                        (capabilities.inheritable(), CapSet::Inheritable),
+                        (capabilities.ambient(), CapSet::Ambient),
+                    ];
+                    for (capabilities, capabilities_set_flag) in capabilities_list.into_iter() {
+                        if let Some(capabilities) = capabilities {
+                            if let Err(err) = set_cap(capabilities_set_flag, capabilities) {
                                 println!("container error: {}", err);
                             }
                         }
                     }
                 }
+
+                setuid(Uid::from_raw(process.user().uid())).unwrap();
+                setgid(Gid::from_raw(process.user().gid())).unwrap();
 
                 chdir(process.cwd()).unwrap();
 
