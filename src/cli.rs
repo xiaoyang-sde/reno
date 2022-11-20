@@ -33,6 +33,9 @@ pub enum OCISubcommand {
 
         #[clap(long)]
         bundle: String,
+
+        #[clap(long)]
+        pid_file: Option<String>,
     },
 
     #[clap(about = "start a container")]
@@ -59,7 +62,7 @@ pub fn state(id: &str) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
+pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<(), RuntimeError> {
     let bundle = Path::new(bundle);
     let bundle_exists = bundle.try_exists().map_err(|err| RuntimeError {
         message: format!("failed to check if the bundle exists: {}", err),
@@ -141,6 +144,9 @@ pub fn create(id: &str, bundle: &str) -> Result<(), RuntimeError> {
         state.pid = pid.as_raw();
         state.status = Status::Created;
         state.persist(&container_root)?;
+        if let Some(pid_file) = pid_file {
+            state.write_pid_file(Path::new(pid_file))?;
+        }
         Ok(())
     } else if let Some(err) = container_message.error {
         Err(RuntimeError {

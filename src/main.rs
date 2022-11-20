@@ -18,7 +18,11 @@ fn main() -> Result<(), RuntimeError> {
     let cli = OCI::parse();
     match &cli.command {
         OCISubcommand::State { id } => state(id)?,
-        OCISubcommand::Create { id, bundle } => create(id, bundle)?,
+        OCISubcommand::Create {
+            id,
+            bundle,
+            pid_file,
+        } => create(id, bundle, pid_file)?,
         OCISubcommand::Start { id } => start(id)?,
         OCISubcommand::Kill { id, signal } => kill(id, signal)?,
         OCISubcommand::Delete { id } => delete(id)?,

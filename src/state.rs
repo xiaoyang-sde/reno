@@ -106,4 +106,22 @@ impl State {
             self.status = Status::Stopped;
         }
     }
+
+    pub fn write_pid_file(&self, pid_file_path: &Path) -> Result<(), RuntimeError> {
+        let mut pid_file = File::create(pid_file_path).map_err(|err| RuntimeError {
+            message: format!("failed to create {}: {}", pid_file_path.display(), err),
+        })?;
+
+        pid_file
+            .write_all(self.pid.to_string().as_bytes())
+            .map_err(|err| RuntimeError {
+                message: format!(
+                    "failed to write the pid to {}: {}",
+                    pid_file_path.display(),
+                    err
+                ),
+            })?;
+
+        Ok(())
+    }
 }
