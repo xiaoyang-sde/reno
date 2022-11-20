@@ -32,7 +32,7 @@ pub fn set_cap(cap_set: CapSet, capabilities: &Capabilities) -> Result<(), Runti
     Ok(())
 }
 
-pub fn oci_spec_to_caps(cap: &OCICap) -> CapsCap {
+fn oci_spec_to_caps(cap: &OCICap) -> CapsCap {
     match cap {
         OCICap::AuditControl => CapsCap::CAP_AUDIT_CONTROL,
         OCICap::AuditRead => CapsCap::CAP_AUDIT_READ,

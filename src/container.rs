@@ -3,6 +3,7 @@ use std::fs::write;
 use std::{ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit};
 
 use crate::cap::set_cap;
+use crate::rlimit::set_rlimit;
 use crate::{
     device::{create_default_device, create_default_symlink, create_device},
     error::RuntimeError,
@@ -236,6 +237,22 @@ pub fn fork_container(
                     for env in env_list {
                         if let Some((k, v)) = env.split_once('=') {
                             set_var(k, v);
+                        }
+                    }
+                }
+
+                if let Some(rlimits) = process.rlimits() {
+                    for rlimit in rlimits {
+                        if let Err(err) = set_rlimit(rlimit) {
+                            container_socket_server
+                                .write(SocketMessage {
+                                    status: Status::Stopped,
+                                    error: Some(RuntimeError {
+                                        message: format!("container error: {}", err),
+                                    }),
+                                })
+                                .unwrap();
+                            exit(1);
                         }
                     }
                 }

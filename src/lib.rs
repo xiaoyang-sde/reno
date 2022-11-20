@@ -6,5 +6,6 @@ pub mod error;
 pub mod hook;
 pub mod mount;
 pub mod process;
+pub mod rlimit;
 pub mod socket;
 pub mod state;

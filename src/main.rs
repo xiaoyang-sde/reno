@@ -8,6 +8,7 @@ mod error;
 mod hook;
 mod mount;
 mod process;
+mod rlimit;
 mod socket;
 mod state;
 
