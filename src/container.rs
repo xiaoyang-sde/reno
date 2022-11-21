@@ -14,6 +14,8 @@ use crate::{
     state::{State, Status},
 };
 use caps::CapSet;
+
+use nix::sys::stat::umask;
 use nix::unistd::setuid;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
@@ -310,6 +312,22 @@ pub fn fork_container(
                         })
                         .unwrap();
                     exit(1);
+                }
+
+                if let Some(mode) = process.user().umask() {
+                    if let Some(mode) = Mode::from_bits(mode) {
+                        umask(mode);
+                    } else {
+                        container_socket_server
+                            .write(SocketMessage {
+                                status: Status::Stopped,
+                                error: Some(RuntimeError {
+                                    message: format!("invalid umask: {}", mode,),
+                                }),
+                            })
+                            .unwrap();
+                        exit(1);
+                    }
                 }
 
                 if let Some(additional_gids) = process.user().additional_gids() {
