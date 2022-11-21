@@ -50,27 +50,6 @@ impl SocketServer {
         Ok(())
     }
 
-    pub fn read(&mut self) -> Result<SocketMessage, RuntimeError> {
-        let mut buffer = String::new();
-        match &mut self.stream {
-            Some(stream) => {
-                let mut reader = BufReader::new(stream);
-                reader.read_line(&mut buffer).map_err(|err| RuntimeError {
-                    message: format!("failed to read from the client: {}", err),
-                })?;
-
-                let message: SocketMessage =
-                    serde_json::from_str(&buffer).map_err(|err| RuntimeError {
-                        message: format!("failed to deserialize the client message: {}", err),
-                    })?;
-                Ok(message)
-            }
-            None => Err(RuntimeError {
-                message: String::from("failed to connect to a client"),
-            }),
-        }
-    }
-
     pub fn write(&mut self, message: SocketMessage) -> Result<(), RuntimeError> {
         let mut message = serde_json::to_string(&message).map_err(|err| RuntimeError {
             message: format!("failed to serialize the client message: {}", err),
@@ -128,20 +107,6 @@ impl SocketClient {
             message: format!("failed to parse the client message: {}", err),
         })?;
         Ok(message)
-    }
-
-    pub fn write(&mut self, message: SocketMessage) -> Result<(), RuntimeError> {
-        let mut message = serde_json::to_string(&message).map_err(|err| RuntimeError {
-            message: format!("failed to serialize the client message: {}", err),
-        })?;
-        message.push('\n');
-
-        self.stream
-            .write_all(message.as_bytes())
-            .map_err(|err| RuntimeError {
-                message: format!("failed to write to the client: {}", err),
-            })?;
-        Ok(())
     }
 
     pub fn shutdown(&self) -> Result<(), RuntimeError> {

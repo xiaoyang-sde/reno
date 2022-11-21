@@ -17,13 +17,13 @@ const RENO_ROOT: &str = "/tmp/reno";
 
 #[derive(Parser, Debug)]
 #[clap(version, about)]
-pub struct OCI {
+pub struct Cli {
     #[clap(subcommand)]
-    pub command: OCISubcommand,
+    pub command: CliSubcommand,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum OCISubcommand {
+pub enum CliSubcommand {
     #[clap(about = "print the state of a container")]
     State { id: String },
 

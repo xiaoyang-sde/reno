@@ -12,21 +12,21 @@ mod rlimit;
 mod socket;
 mod state;
 
-use crate::cli::{create, delete, kill, start, state, OCISubcommand, OCI};
+use crate::cli::{create, delete, kill, start, state, CliSubcommand, Cli};
 use crate::error::RuntimeError;
 
 fn main() -> Result<(), RuntimeError> {
-    let cli = OCI::parse();
+    let cli = Cli::parse();
     match &cli.command {
-        OCISubcommand::State { id } => state(id)?,
-        OCISubcommand::Create {
+        CliSubcommand::State { id } => state(id)?,
+        CliSubcommand::Create {
             id,
             bundle,
             pid_file,
         } => create(id, bundle, pid_file)?,
-        OCISubcommand::Start { id } => start(id)?,
-        OCISubcommand::Kill { id, signal } => kill(id, signal)?,
-        OCISubcommand::Delete { id } => delete(id)?,
+        CliSubcommand::Start { id } => start(id)?,
+        CliSubcommand::Kill { id, signal } => kill(id, signal)?,
+        CliSubcommand::Delete { id } => delete(id)?,
     }
 
     Ok(())
