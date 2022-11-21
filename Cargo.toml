@@ -10,6 +10,7 @@ caps = "0.5.4"
 clap = { version = "3.2.22", features = ["derive"] }
 nix = "0.25.0"
 oci-spec = "0.5.8"
+prctl = "1.0.0"
 procfs = "0.14.1"
 rlimit = "0.8.3"
 serde = "1.0.145"

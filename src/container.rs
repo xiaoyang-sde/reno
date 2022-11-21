@@ -14,10 +14,10 @@ use crate::{
     state::{State, Status},
 };
 use caps::CapSet;
-use nix::unistd::setgid;
 use nix::unistd::setuid;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
+use nix::unistd::{setgid, setgroups};
 use nix::{
     fcntl::{open, OFlag},
     sched::setns,
@@ -26,6 +26,7 @@ use nix::{
     unistd::{chdir, execvp, sethostname, Pid},
 };
 use oci_spec::runtime::{LinuxNamespace, Spec};
+use prctl::set_keep_capabilities;
 use std::env::set_var;
 
 pub fn fork_container(
@@ -257,23 +258,6 @@ pub fn fork_container(
                     }
                 }
 
-                if let Some(capabilities) = process.capabilities() {
-                    let capabilities_list = [
-                        (capabilities.bounding(), CapSet::Bounding),
-                        (capabilities.effective(), CapSet::Effective),
-                        (capabilities.permitted(), CapSet::Permitted),
-                        (capabilities.inheritable(), CapSet::Inheritable),
-                        (capabilities.ambient(), CapSet::Ambient),
-                    ];
-                    for (capabilities, capabilities_set_flag) in capabilities_list.into_iter() {
-                        if let Some(capabilities) = capabilities {
-                            if let Err(err) = set_cap(capabilities_set_flag, capabilities) {
-                                println!("container error: {}", err);
-                            }
-                        }
-                    }
-                }
-
                 if let Some(oom_score_adj) = process.oom_score_adj() {
                     let sysctl_path = Path::new("/proc/self/oom_score_adj");
                     if let Err(err) = write(sysctl_path, oom_score_adj.to_string()) {
@@ -292,10 +276,119 @@ pub fn fork_container(
                     }
                 }
 
-                setuid(Uid::from_raw(process.user().uid())).unwrap();
-                setgid(Gid::from_raw(process.user().gid())).unwrap();
+                if let Some(capabilities) = process.capabilities() {
+                    if let Some(capabilities) = capabilities.bounding() {
+                        if let Err(err) = set_cap(CapSet::Bounding, capabilities) {
+                            println!("container error: {}", err);
+                        }
+                    }
+                }
 
-                chdir(process.cwd()).unwrap();
+                if let Err(err) = set_keep_capabilities(true) {
+                    container_socket_server
+                        .write(SocketMessage {
+                            status: Status::Stopped,
+                            error: Some(RuntimeError {
+                                message: format!("failed to set PR_SET_KEEPCAPS to true: {}", err),
+                            }),
+                        })
+                        .unwrap();
+                    exit(1);
+                }
+
+                if let Err(err) = setgid(Gid::from_raw(process.user().gid())) {
+                    container_socket_server
+                        .write(SocketMessage {
+                            status: Status::Stopped,
+                            error: Some(RuntimeError {
+                                message: format!(
+                                    "failed to set gid to {}: {}",
+                                    process.user().gid(),
+                                    err
+                                ),
+                            }),
+                        })
+                        .unwrap();
+                    exit(1);
+                }
+
+                if let Some(additional_gids) = process.user().additional_gids() {
+                    let additional_gids: &Vec<Gid> = &additional_gids
+                        .iter()
+                        .map(|gid| Gid::from_raw(*gid))
+                        .collect();
+                    if let Err(err) = setgroups(additional_gids) {
+                        container_socket_server
+                            .write(SocketMessage {
+                                status: Status::Stopped,
+                                error: Some(RuntimeError {
+                                    message: format!("failed to set additional gids: {}", err),
+                                }),
+                            })
+                            .unwrap();
+                        exit(1);
+                    }
+                }
+
+                if let Err(err) = setuid(Uid::from_raw(process.user().uid())) {
+                    container_socket_server
+                        .write(SocketMessage {
+                            status: Status::Stopped,
+                            error: Some(RuntimeError {
+                                message: format!(
+                                    "failed to set uid to {}: {}",
+                                    process.user().uid(),
+                                    err
+                                ),
+                            }),
+                        })
+                        .unwrap();
+                    exit(1);
+                }
+
+                if let Err(err) = set_keep_capabilities(false) {
+                    container_socket_server
+                        .write(SocketMessage {
+                            status: Status::Stopped,
+                            error: Some(RuntimeError {
+                                message: format!("failed to set PR_SET_KEEPCAPS to false: {}", err),
+                            }),
+                        })
+                        .unwrap();
+                    exit(1);
+                }
+
+                if let Some(capabilities) = process.capabilities() {
+                    let capabilities_list = [
+                        (capabilities.effective(), CapSet::Effective),
+                        (capabilities.permitted(), CapSet::Permitted),
+                        (capabilities.inheritable(), CapSet::Inheritable),
+                        (capabilities.ambient(), CapSet::Ambient),
+                    ];
+                    for (capabilities, capabilities_set_flag) in capabilities_list.into_iter() {
+                        if let Some(capabilities) = capabilities {
+                            if let Err(err) = set_cap(capabilities_set_flag, capabilities) {
+                                println!("container error: {}", err);
+                            }
+                        }
+                    }
+                }
+
+                if let Err(err) = chdir(process.cwd()) {
+                    container_socket_server
+                        .write(SocketMessage {
+                            status: Status::Stopped,
+                            error: Some(RuntimeError {
+                                message: format!(
+                                    "failed to change the working directory to {}: {}",
+                                    process.cwd().display(),
+                                    err
+                                ),
+                            }),
+                        })
+                        .unwrap();
+                    exit(1);
+                }
 
                 container_socket_server
                     .write(SocketMessage {
