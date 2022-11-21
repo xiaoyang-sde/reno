@@ -274,6 +274,24 @@ pub fn fork_container(
                     }
                 }
 
+                if let Some(oom_score_adj) = process.oom_score_adj() {
+                    let sysctl_path = Path::new("/proc/self/oom_score_adj");
+                    if let Err(err) = write(sysctl_path, oom_score_adj.to_string()) {
+                        container_socket_server
+                            .write(SocketMessage {
+                                status: Status::Stopped,
+                                error: Some(RuntimeError {
+                                    message: format!(
+                                        "failed to set oom_score_adj to {}: {}",
+                                        oom_score_adj, err
+                                    ),
+                                }),
+                            })
+                            .unwrap();
+                        exit(1);
+                    }
+                }
+
                 setuid(Uid::from_raw(process.user().uid())).unwrap();
                 setgid(Gid::from_raw(process.user().gid())).unwrap();
 

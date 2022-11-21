@@ -12,7 +12,7 @@ mod rlimit;
 mod socket;
 mod state;
 
-use crate::cli::{create, delete, kill, start, state, CliSubcommand, Cli};
+use crate::cli::{create, delete, kill, start, state, Cli, CliSubcommand};
 use crate::error::RuntimeError;
 
 fn main() -> Result<(), RuntimeError> {
