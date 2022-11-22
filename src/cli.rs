@@ -18,33 +18,33 @@ const RENO_ROOT: &str = "/tmp/reno";
 #[derive(Parser, Debug)]
 #[clap(version, about)]
 pub struct Cli {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     pub command: CliSubcommand,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum CliSubcommand {
-    #[clap(about = "print the state of a container")]
+    #[command(about = "print the state of a container")]
     State { id: String },
 
-    #[clap(about = "create a container")]
+    #[command(about = "create a container")]
     Create {
         id: String,
 
-        #[clap(long)]
+        #[arg(long)]
         bundle: String,
 
-        #[clap(long)]
+        #[arg(long)]
         pid_file: Option<String>,
     },
 
-    #[clap(about = "start a container")]
+    #[command(about = "start a container")]
     Start { id: String },
 
-    #[clap(about = "kill a container")]
+    #[command(about = "kill a container")]
     Kill { id: String, signal: String },
 
-    #[clap(about = "delete a container")]
+    #[command(about = "delete a container")]
     Delete { id: String },
 }
 
