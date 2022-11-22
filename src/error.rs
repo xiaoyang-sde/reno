@@ -10,6 +10,12 @@ pub struct RuntimeError {
     pub message: String,
 }
 
+impl RuntimeError {
+    pub fn new(message: String) -> Self {
+        RuntimeError { message }
+    }
+}
+
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.message)

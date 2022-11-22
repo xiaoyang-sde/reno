@@ -1,8 +1,11 @@
 use std::fs::write;
 
-use std::{ffi::CString, os::unix::prelude::AsRawFd, path::Path, process::exit};
+use std::{ffi::CString, path::Path, process::exit};
 
 use crate::cap::set_cap;
+use crate::linux::hostname::set_hostname;
+use crate::linux::namespace::set_namespace;
+use crate::linux::sysctl::set_sysctl;
 use crate::rlimit::set_rlimit;
 use crate::{
     device::{create_default_device, create_default_symlink, create_device},
@@ -21,20 +24,72 @@ use nix::unistd::Gid;
 use nix::unistd::Uid;
 use nix::unistd::{setgid, setgroups};
 use nix::{
-    fcntl::{open, OFlag},
-    sched::setns,
-    sched::CloneFlags,
     sys::stat::Mode,
-    unistd::{chdir, execvp, sethostname, Pid},
+    unistd::{chdir, execvp, Pid},
 };
 use oci_spec::runtime::{LinuxNamespace, Spec};
 use prctl::set_keep_capabilities;
 use std::env::set_var;
 
+fn init_container(
+    spec: &Spec,
+    state: &State,
+    namespace_list: &Vec<LinuxNamespace>,
+) -> Result<(), RuntimeError> {
+    set_namespace(namespace_list)?;
+
+    let rootfs = &state.bundle.join(spec.root().as_ref().unwrap().path());
+    mount_rootfs(rootfs)?;
+
+    if let Some(mounts) = &spec.mounts() {
+        for mount in mounts {
+            oci_mount(rootfs, mount)?;
+        }
+    }
+
+    if let Some(linux) = spec.linux() {
+        if let Some(devices) = linux.devices() {
+            for device in devices {
+                create_device(rootfs, device)?;
+            }
+        }
+    }
+
+    // should return error
+    create_default_device(rootfs);
+    create_default_symlink(rootfs)?;
+
+    if let Some(hostname) = spec.hostname() {
+        set_hostname(hostname)?;
+    }
+
+    Ok(())
+}
+
+fn create_container(spec: &Spec, state: &State) -> Result<(), RuntimeError> {
+    if let Some(hooks) = spec.hooks() {
+        if let Some(create_container_hooks) = hooks.create_container() {
+            for create_container_hook in create_container_hooks {
+                run_hook(state, create_container_hook)?;
+            }
+        }
+    }
+
+    let rootfs = &state.bundle.join(spec.root().as_ref().unwrap().path());
+    pivot_rootfs(rootfs)?;
+
+    if let Some(linux) = spec.linux() {
+        if let Some(sysctl) = linux.sysctl() {
+            set_sysctl(sysctl)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn fork_container(
     spec: &Spec,
     state: &State,
-    namespaces: &Vec<LinuxNamespace>,
+    namespace_list: &Vec<LinuxNamespace>,
     init_socket_path: &Path,
     container_socket_path: &Path,
 ) -> Result<Pid, RuntimeError> {
@@ -45,99 +100,14 @@ pub fn fork_container(
             init_socket_client.shutdown().unwrap();
             container_socket_server.listen().unwrap();
 
-            for namespace in namespaces {
-                if let Some(path) = namespace.path() {
-                    let fd = match open(path.as_os_str(), OFlag::empty(), Mode::empty()) {
-                        Ok(fd) => fd,
-                        Err(err) => {
-                            container_socket_server
-                                .write(SocketMessage {
-                                    status: Status::Creating,
-                                    error: Some(RuntimeError {
-                                        message: format!("container error: {}", err),
-                                    }),
-                                })
-                                .unwrap();
-                            exit(1);
-                        }
-                    };
-
-                    if let Err(err) = setns(fd.as_raw_fd(), CloneFlags::empty()) {
-                        container_socket_server
-                            .write(SocketMessage {
-                                status: Status::Creating,
-                                error: Some(RuntimeError {
-                                    message: format!("container error: {}", err),
-                                }),
-                            })
-                            .unwrap();
-                        exit(1);
-                    }
-                }
-            }
-
-            let rootfs = &state.bundle.join(spec.root().as_ref().unwrap().path());
-            if let Err(err) = mount_rootfs(rootfs) {
+            if let Err(err) = init_container(spec, state, namespace_list) {
                 container_socket_server
                     .write(SocketMessage {
                         status: Status::Creating,
-                        error: Some(RuntimeError {
-                            message: format!("container error: {}", err),
-                        }),
+                        error: Some(err),
                     })
                     .unwrap();
                 exit(1);
-            }
-
-            if let Some(mounts) = &spec.mounts() {
-                for mount in mounts {
-                    if let Err(err) = oci_mount(rootfs, mount) {
-                        container_socket_server
-                            .write(SocketMessage {
-                                status: Status::Creating,
-                                error: Some(RuntimeError {
-                                    message: format!("container error: {}", err),
-                                }),
-                            })
-                            .unwrap();
-                        exit(1);
-                    }
-                }
-            }
-
-            if let Some(linux) = spec.linux() {
-                if let Some(devices) = linux.devices() {
-                    for device in devices {
-                        if let Err(err) = create_device(rootfs, device) {
-                            container_socket_server
-                                .write(SocketMessage {
-                                    status: Status::Creating,
-                                    error: Some(RuntimeError {
-                                        message: format!("container error: {}", err),
-                                    }),
-                                })
-                                .unwrap();
-                            exit(1);
-                        }
-                    }
-                }
-            }
-
-            create_default_device(rootfs);
-            if let Err(err) = create_default_symlink(rootfs) {
-                container_socket_server
-                    .write(SocketMessage {
-                        status: Status::Creating,
-                        error: Some(RuntimeError {
-                            message: format!("container error: {}", err),
-                        }),
-                    })
-                    .unwrap();
-                exit(1);
-            }
-
-            if let Some(hostname) = spec.hostname() {
-                sethostname(hostname).unwrap();
             }
 
             container_socket_server
@@ -148,56 +118,14 @@ pub fn fork_container(
                 .unwrap();
             container_socket_server.listen().unwrap();
 
-            if let Some(hooks) = spec.hooks() {
-                if let Some(create_container_hooks) = hooks.create_container() {
-                    for create_container_hook in create_container_hooks {
-                        if let Err(err) = run_hook(state, create_container_hook) {
-                            container_socket_server
-                                .write(SocketMessage {
-                                    status: Status::Stopped,
-                                    error: Some(RuntimeError {
-                                        message: format!("container error: {}", err),
-                                    }),
-                                })
-                                .unwrap();
-                            exit(1);
-                        }
-                    }
-                }
-            }
-
-            if let Err(err) = pivot_rootfs(rootfs) {
+            if let Err(err) = create_container(spec, state) {
                 container_socket_server
                     .write(SocketMessage {
-                        status: Status::Creating,
-                        error: Some(RuntimeError {
-                            message: format!("container error: {}", err),
-                        }),
+                        status: Status::Stopped,
+                        error: Some(err),
                     })
                     .unwrap();
                 exit(1);
-            }
-
-            if let Some(linux) = spec.linux() {
-                if let Some(sysctl) = linux.sysctl() {
-                    for (field, value) in sysctl {
-                        let sysctl_path = Path::new("/proc/sys").join(field.replace('.', "/"));
-                        if let Err(err) = write(sysctl_path, value) {
-                            container_socket_server
-                                .write(SocketMessage {
-                                    status: Status::Stopped,
-                                    error: Some(RuntimeError {
-                                        message: format!(
-                                            "failed to set {} to {}: {}",
-                                            field, value, err
-                                        ),
-                                    }),
-                                })
-                                .unwrap();
-                            exit(1);
-                        }
-                    }
-                }
             }
 
             container_socket_server
@@ -440,6 +368,6 @@ pub fn fork_container(
 
             0
         },
-        namespaces,
+        namespace_list,
     )
 }

@@ -2,22 +2,10 @@ use nix::{
     sched::{clone, CloneFlags},
     unistd::Pid,
 };
-use oci_spec::runtime::{LinuxNamespace, LinuxNamespaceType};
+use oci_spec::runtime::LinuxNamespace;
 use procfs::process::{ProcState, Process};
 
-use crate::error::RuntimeError;
-
-fn namespace_to_clone_flag(namespace: &LinuxNamespace) -> CloneFlags {
-    match namespace.typ() {
-        LinuxNamespaceType::Mount => CloneFlags::CLONE_NEWNS,
-        LinuxNamespaceType::Cgroup => CloneFlags::CLONE_NEWCGROUP,
-        LinuxNamespaceType::Uts => CloneFlags::CLONE_NEWUTS,
-        LinuxNamespaceType::Ipc => CloneFlags::CLONE_NEWIPC,
-        LinuxNamespaceType::User => CloneFlags::CLONE_NEWUSER,
-        LinuxNamespaceType::Pid => CloneFlags::CLONE_NEWPID,
-        LinuxNamespaceType::Network => CloneFlags::CLONE_NEWNET,
-    }
-}
+use crate::{error::RuntimeError, linux::namespace::namespace_to_clone_flag};
 
 /// `clone_child` creates a child process that invokes `function` in seperated
 /// Linux namespaces specified in `namespace_list`
