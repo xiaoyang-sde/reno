@@ -1,15 +1,10 @@
 use clap::Parser;
 
-mod cap;
 mod cli;
 mod container;
-mod device;
 mod error;
 mod hook;
 mod linux;
-mod mount;
-mod process;
-mod rlimit;
 mod socket;
 mod state;
 

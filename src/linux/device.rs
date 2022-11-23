@@ -1,11 +1,11 @@
 use nix::sys::stat::SFlag;
-use nix::sys::stat::{makedev, mknod, Mode};
+use nix::sys::stat::{self, Mode};
 
-use nix::unistd::{chown, Gid, Uid};
+use nix::unistd::{self, Gid, Uid};
 use oci_spec::runtime::{LinuxDevice, LinuxDeviceBuilder, LinuxDeviceType};
 
-use std::fs::{set_permissions, Permissions};
-use std::os::unix::fs::symlink;
+use std::fs::{self, Permissions};
+use std::os::unix;
 use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ use crate::error::RuntimeError;
 
 /// `create_default_symlink` creates symbolic links for the default
 /// [dev symbolic links](https://github.com/opencontainers/runtime-spec/blob/main/runtime-linux.md#-dev-symbolic-links)
-/// specified in OCI runtime specification
+/// specified in OCI runtime specification.
 pub fn create_default_symlink(rootfs: &Path) -> Result<(), RuntimeError> {
     let default_symlink_list = [
         ("/proc/self/fd", "/dev/fd"),
@@ -25,11 +25,7 @@ pub fn create_default_symlink(rootfs: &Path) -> Result<(), RuntimeError> {
     ];
 
     for (source, destination) in default_symlink_list {
-        symlink(source, rootfs.join(destination.trim_start_matches('/'))).map_err(|err| {
-            RuntimeError {
-                message: format!("failed to create default symlink: {}", err),
-            }
-        })?;
+        unix::fs::symlink(source, rootfs.join(destination.trim_start_matches('/')))?;
     }
     Ok(())
 }
@@ -43,50 +39,33 @@ fn to_sflag(flag: LinuxDeviceType) -> SFlag {
     }
 }
 
-/// `create_device` creates a Linux device with `mknod`
+/// `create_device` creates a Linux device with `mknod`.
+/// For more information, see the [mknod(2)](https://man7.org/linux/man-pages/man2/mknod.2.html)
+/// man page.
 pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeError> {
     let path = &rootfs.join(device.path().display().to_string().trim_start_matches('/'));
 
-    mknod(
+    stat::mknod(
         path,
         to_sflag(device.typ()),
         Mode::from_bits_truncate(device.file_mode().unwrap_or(0o066)),
-        makedev(device.major() as u64, device.minor() as u64),
-    )
-    .map_err(|err| RuntimeError {
-        message: format!(
-            "failed to create the device {}: {}",
-            device.path().display(),
-            err
-        ),
-    })?;
+        stat::makedev(device.major() as u64, device.minor() as u64),
+    )?;
+    fs::set_permissions(path, Permissions::from_mode(0o660))?;
 
-    set_permissions(path, Permissions::from_mode(0o660)).map_err(|err| RuntimeError {
-        message: format!(
-            "failed to change the permission of {}: {}",
-            path.display(),
-            err
-        ),
-    })?;
-
-    if let Some(uid) = device.uid() {
-        chown(path, Some(Uid::from_raw(uid)), None).map_err(|err| RuntimeError {
-            message: format!("failed to create default symlink: {}", err.desc()),
-        })?;
-    }
     if let Some(gid) = device.gid() {
-        chown(path, None, Some(Gid::from_raw(gid))).map_err(|err| RuntimeError {
-            message: format!("failed to create default symlink: {}", err.desc()),
-        })?;
+        unistd::chown(path, None, Some(Gid::from_raw(gid)))?;
     }
-
+    if let Some(uid) = device.uid() {
+        unistd::chown(path, Some(Uid::from_raw(uid)), None)?;
+    }
     Ok(())
 }
 
 /// `create_default_device` creates devices for the
 /// [default devices](https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md#default-devices)
-/// specified in OCI runtime specification
-pub fn create_default_device(rootfs: &Path) {
+/// specified in OCI runtime specification.
+pub fn create_default_device(rootfs: &Path) -> Result<(), RuntimeError> {
     let default_device_list: [(&str, LinuxDeviceType, u32, u32, u32, u32, u32); 6] = [
         ("/dev/null", LinuxDeviceType::C, 1, 3, 0o066, 0, 0),
         ("/dev/zero", LinuxDeviceType::C, 1, 5, 0o066, 0, 0),
@@ -105,9 +84,9 @@ pub fn create_default_device(rootfs: &Path) {
             .file_mode(file_mode)
             .uid(uid)
             .gid(gid)
-            .build()
-            .unwrap();
+            .build()?;
 
-        create_device(rootfs, &device).unwrap();
+        create_device(rootfs, &device)?;
     }
+    Ok(())
 }

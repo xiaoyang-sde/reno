@@ -1,16 +1,21 @@
 use crate::error::RuntimeError;
 use oci_spec::runtime::{LinuxRlimit, LinuxRlimitType};
-use rlimit::{setrlimit, Resource};
+use rlimit::Resource;
 
+/// `set_rlimit` sets a soft and hard limit for each resource.
+/// The soft limit is the value that the kernel enforces for the resource.
+/// The hard limit is a maximum value for the soft limit.
+/// For example, `RLIMIT_CPU` limits the amount of CPU time the container process could consume.
+/// For more information, see the [getrlimit(2)](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+/// man page.
 pub fn set_rlimit(rlimit: &LinuxRlimit) -> Result<(), RuntimeError> {
-    let resource = oci_spec_to_rlimit(&rlimit.typ());
-    setrlimit(resource, rlimit.soft(), rlimit.hard()).map_err(|err| RuntimeError {
-        message: format!("failed to set rlimit for {}: {}", resource.as_name(), err),
-    })?;
+    let resource = linux_rlimit_type_to_resource(&rlimit.typ());
+    rlimit::setrlimit(resource, rlimit.soft(), rlimit.hard())?;
     Ok(())
 }
 
-fn oci_spec_to_rlimit(rlimit: &LinuxRlimitType) -> Resource {
+/// `linux_rlimit_type_to_resource` converts [LinuxRlimitType] to [Resource].
+fn linux_rlimit_type_to_resource(rlimit: &LinuxRlimitType) -> Resource {
     match rlimit {
         LinuxRlimitType::RlimitCpu => Resource::CPU,
         LinuxRlimitType::RlimitFsize => Resource::FSIZE,

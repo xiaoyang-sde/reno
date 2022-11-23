@@ -2,17 +2,17 @@ use std::fs::write;
 
 use std::{ffi::CString, path::Path, process::exit};
 
-use crate::cap::set_cap;
+use crate::linux::cap::set_cap;
 use crate::linux::hostname::set_hostname;
 use crate::linux::namespace::set_namespace;
+use crate::linux::rlimit::set_rlimit;
 use crate::linux::sysctl::set_sysctl;
-use crate::rlimit::set_rlimit;
 use crate::{
-    device::{create_default_device, create_default_symlink, create_device},
     error::RuntimeError,
     hook::run_hook,
-    mount::{mount_rootfs, oci_mount, pivot_rootfs},
-    process::clone_child,
+    linux::device::{create_default_device, create_default_symlink, create_device},
+    linux::mount::{custom_mount, mount_rootfs, pivot_rootfs},
+    linux::process::clone_child,
     socket::{SocketClient, SocketMessage, SocketServer},
     state::{State, Status},
 };
@@ -43,7 +43,7 @@ fn init_container(
 
     if let Some(mounts) = &spec.mounts() {
         for mount in mounts {
-            oci_mount(rootfs, mount)?;
+            custom_mount(rootfs, mount)?;
         }
     }
 
@@ -55,8 +55,7 @@ fn init_container(
         }
     }
 
-    // should return error
-    create_default_device(rootfs);
+    create_default_device(rootfs)?;
     create_default_symlink(rootfs)?;
 
     if let Some(hostname) = spec.hostname() {

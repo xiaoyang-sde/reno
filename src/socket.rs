@@ -1,4 +1,4 @@
-use std::fs::remove_file;
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -23,14 +23,7 @@ pub struct SocketServer {
 
 impl SocketServer {
     pub fn bind(path: &Path) -> Result<Self, RuntimeError> {
-        let listener = UnixListener::bind(path).map_err(|err| RuntimeError {
-            message: format!(
-                "failed to bind the UnixListener to {}: {}",
-                path.display(),
-                err
-            ),
-        })?;
-
+        let listener = UnixListener::bind(path)?;
         Ok(SocketServer {
             path: path.to_path_buf(),
             listener,
@@ -58,14 +51,8 @@ impl SocketServer {
 
         match &mut self.stream {
             Some(stream) => {
-                stream
-                    .write_all(message.as_bytes())
-                    .map_err(|err| RuntimeError {
-                        message: format!("failed to write to the client: {}", err),
-                    })?;
-                stream.flush().map_err(|err| RuntimeError {
-                    message: format!("failed to flush the write buffer: {}", err),
-                })?;
+                stream.write_all(message.as_bytes())?;
+                stream.flush()?;
                 Ok(())
             }
             None => Err(RuntimeError {
@@ -78,7 +65,7 @@ impl SocketServer {
 impl Drop for SocketServer {
     fn drop(&mut self) {
         if self.path.try_exists().unwrap() {
-            remove_file(&self.path).unwrap();
+            fs::remove_file(&self.path).unwrap();
         }
     }
 }
@@ -89,19 +76,14 @@ pub struct SocketClient {
 
 impl SocketClient {
     pub fn connect(path: &Path) -> Result<Self, RuntimeError> {
-        let stream = UnixStream::connect(path).map_err(|err| RuntimeError {
-            message: format!("failed to connect to {}: {}", path.display(), err),
-        })?;
-
+        let stream = UnixStream::connect(path)?;
         Ok(SocketClient { stream })
     }
 
     pub fn read(&mut self) -> Result<SocketMessage, RuntimeError> {
         let mut buffer = String::new();
         let mut reader = BufReader::new(&self.stream);
-        reader.read_line(&mut buffer).map_err(|err| RuntimeError {
-            message: format!("failed to read from the client: {}", err),
-        })?;
+        reader.read_line(&mut buffer)?;
 
         let message: SocketMessage = serde_json::from_str(&buffer).map_err(|err| RuntimeError {
             message: format!("failed to parse the client message: {}", err),
@@ -110,11 +92,7 @@ impl SocketClient {
     }
 
     pub fn shutdown(&self) -> Result<(), RuntimeError> {
-        self.stream
-            .shutdown(Shutdown::Both)
-            .map_err(|err| RuntimeError {
-                message: format!("failed to shutdown the stream: {}", err),
-            })?;
+        self.stream.shutdown(Shutdown::Both)?;
         Ok(())
     }
 }

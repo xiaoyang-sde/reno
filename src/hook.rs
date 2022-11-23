@@ -7,6 +7,8 @@ use std::{
 
 use crate::{error::RuntimeError, state::State};
 
+/// `run_hook` accepts and invokes a [Hook], which is a command that is run at a particular event
+/// in the lifecycle of a container.
 pub fn run_hook(state: &State, hook: &Hook) -> Result<(), RuntimeError> {
     let mut command = Command::new(hook.path());
     command.env_clear();
@@ -24,28 +26,16 @@ pub fn run_hook(state: &State, hook: &Hook) -> Result<(), RuntimeError> {
         command.args(&args[1..]);
     }
 
-    let mut hook_process = command
-        .stdin(Stdio::piped())
-        .spawn()
-        .map_err(|err| RuntimeError {
-            message: format!("failed to run the hook: {}", err),
-        })?;
+    let mut hook_process = command.stdin(Stdio::piped()).spawn()?;
 
     if let Some(mut stdin) = hook_process.stdin.as_ref() {
         let state_json = serde_json::to_string(state).map_err(|err| RuntimeError {
             message: format!("failed to serialize the state to JSON: {}", err),
         })?;
-        stdin
-            .write_all(state_json.as_bytes())
-            .map_err(|_| RuntimeError {
-                message: "failed to write the state to the hook standard input".to_string(),
-            })?;
+        stdin.write_all(state_json.as_bytes())?;
     }
 
-    let status = hook_process.wait().map_err(|err| RuntimeError {
-        message: format!("failed to run the hook: {}", err),
-    })?;
-
+    let status = hook_process.wait()?;
     if let Some(code) = status.code() {
         if code == 0 {
             Ok(())
