@@ -1,18 +1,17 @@
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-
-use crate::error::RuntimeError;
 use crate::state::Status;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SocketMessage {
     pub status: Status,
-    pub error: Option<RuntimeError>,
+    pub error: Option<String>,
 }
 
 pub struct SocketServer {
@@ -22,8 +21,9 @@ pub struct SocketServer {
 }
 
 impl SocketServer {
-    pub fn bind(path: &Path) -> Result<Self, RuntimeError> {
-        let listener = UnixListener::bind(path)?;
+    pub fn bind(path: &Path) -> Result<Self> {
+        let listener =
+            UnixListener::bind(path).context(format!("failed to bind to {}", path.display()))?;
         Ok(SocketServer {
             path: path.to_path_buf(),
             listener,
@@ -31,33 +31,28 @@ impl SocketServer {
         })
     }
 
-    pub fn listen(&mut self) -> Result<(), RuntimeError> {
+    pub fn listen(&mut self) -> Result<()> {
         match self.listener.accept() {
             Ok((stream, _)) => self.stream = Some(stream),
-            Err(err) => {
-                return Err(RuntimeError {
-                    message: format!("failed to accept the incoming connection: {}", err),
-                })
-            }
+            Err(_err) => bail!("failed to accept the incoming connection"),
         }
         Ok(())
     }
 
-    pub fn write(&mut self, message: SocketMessage) -> Result<(), RuntimeError> {
-        let mut message = serde_json::to_string(&message).map_err(|err| RuntimeError {
-            message: format!("failed to serialize the client message: {}", err),
-        })?;
+    pub fn write(&mut self, message: SocketMessage) -> Result<()> {
+        let mut message =
+            serde_json::to_string(&message).context("failed to serialize the client message")?;
         message.push('\n');
 
         match &mut self.stream {
             Some(stream) => {
-                stream.write_all(message.as_bytes())?;
-                stream.flush()?;
+                stream
+                    .write_all(message.as_bytes())
+                    .context("failed to send the message to the client")?;
+                stream.flush().context("failed to flush the write buffer")?;
                 Ok(())
             }
-            None => Err(RuntimeError {
-                message: String::from("failed to connect to a client"),
-            }),
+            None => bail!("failed to connect to a client"),
         }
     }
 }
@@ -75,24 +70,27 @@ pub struct SocketClient {
 }
 
 impl SocketClient {
-    pub fn connect(path: &Path) -> Result<Self, RuntimeError> {
-        let stream = UnixStream::connect(path)?;
+    pub fn connect(path: &Path) -> Result<Self> {
+        let stream = UnixStream::connect(path).context("failed to connect to the server")?;
         Ok(SocketClient { stream })
     }
 
-    pub fn read(&mut self) -> Result<SocketMessage, RuntimeError> {
+    pub fn read(&mut self) -> Result<SocketMessage> {
         let mut buffer = String::new();
         let mut reader = BufReader::new(&self.stream);
-        reader.read_line(&mut buffer)?;
+        reader
+            .read_line(&mut buffer)
+            .context("failed to read the message from the server")?;
 
-        let message: SocketMessage = serde_json::from_str(&buffer).map_err(|err| RuntimeError {
-            message: format!("failed to parse the client message: {}", err),
-        })?;
+        let message: SocketMessage =
+            serde_json::from_str(&buffer).context("failed to parse the client message")?;
         Ok(message)
     }
 
-    pub fn shutdown(&self) -> Result<(), RuntimeError> {
-        self.stream.shutdown(Shutdown::Both)?;
+    pub fn shutdown(&self) -> Result<()> {
+        self.stream
+            .shutdown(Shutdown::Both)
+            .context("failed to shutdown the connection")?;
         Ok(())
     }
 }

@@ -1,3 +1,5 @@
+use crate::{error::RuntimeError, state::State};
+use anyhow::{bail, Context, Result};
 use oci_spec::runtime::Hook;
 use std::{
     io::Write,
@@ -5,11 +7,9 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{error::RuntimeError, state::State};
-
 /// `run_hook` accepts and invokes a [Hook], which is a command that is run at a particular event
 /// in the lifecycle of a container.
-pub fn run_hook(state: &State, hook: &Hook) -> Result<(), RuntimeError> {
+pub fn run_hook(state: &State, hook: &Hook) -> Result<()> {
     let mut command = Command::new(hook.path());
     command.env_clear();
 
@@ -26,27 +26,30 @@ pub fn run_hook(state: &State, hook: &Hook) -> Result<(), RuntimeError> {
         command.args(&args[1..]);
     }
 
-    let mut hook_process = command.stdin(Stdio::piped()).spawn()?;
+    let mut hook_process = command
+        .stdin(Stdio::piped())
+        .spawn()
+        .context("failed to spawn the hook process")?;
 
     if let Some(mut stdin) = hook_process.stdin.as_ref() {
         let state_json = serde_json::to_string(state).map_err(|err| RuntimeError {
             message: format!("failed to serialize the state to JSON: {}", err),
         })?;
-        stdin.write_all(state_json.as_bytes())?;
+        stdin
+            .write_all(state_json.as_bytes())
+            .context("failed to write the state to the hook standard input")?;
     }
 
-    let status = hook_process.wait()?;
+    let status = hook_process
+        .wait()
+        .context("failed to wait the hook process to exit")?;
     if let Some(code) = status.code() {
         if code == 0 {
             Ok(())
         } else {
-            Err(RuntimeError {
-                message: format!("failed to run the hook: exit status {}", code),
-            })
+            bail!(format!("failed to run the hook: exit status {}", code))
         }
     } else {
-        Err(RuntimeError {
-            message: "failed to run the hook".to_string(),
-        })
+        bail!("failed to run the hook")
     }
 }

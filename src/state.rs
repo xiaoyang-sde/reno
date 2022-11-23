@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use procfs::process::ProcState;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -7,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{error::RuntimeError, linux::process::inspect_process};
+use crate::linux::process::inspect_process;
 
 const OCI_VERSION: &str = "1.0.2";
 
@@ -45,25 +46,34 @@ impl State {
     }
 
     /// `load` reads the container state from `{container_path}/state.json`.
-    pub fn load(container_path: &Path) -> Result<Self, RuntimeError> {
+    pub fn load(container_path: &Path) -> Result<Self> {
         let state_file_path = &container_path.join("state.json");
-        let state_json = fs::read_to_string(state_file_path)?;
+        let state_json = fs::read_to_string(state_file_path).context(format!(
+            "failed to read the container state from {}",
+            state_file_path.display()
+        ))?;
 
-        let state: State = serde_json::from_str(&state_json).map_err(|err| RuntimeError {
-            message: format!("failed to deserialize the state from JSON: {}", err),
-        })?;
+        let state: State = serde_json::from_str(&state_json)
+            .context("failed to deserialize the state from JSON".to_string())?;
         Ok(state)
     }
 
     /// `persist` serializes the container state to JSON and writes it to `{container_path}/state.json`.
-    pub fn persist(&self, container_path: &Path) -> Result<(), RuntimeError> {
-        let state_json = serde_json::to_string(&self).map_err(|err| RuntimeError {
-            message: format!("failed to serialize the state to JSON: {}", err),
-        })?;
+    pub fn persist(&self, container_path: &Path) -> Result<()> {
+        let state_json = serde_json::to_string(&self)
+            .context("failed to serialize the state to JSON".to_string())?;
 
         let state_file_path = &container_path.join("state.json");
-        let mut state_file = File::create(state_file_path)?;
-        state_file.write_all(state_json.as_bytes())?;
+        let mut state_file = File::create(state_file_path).context(format!(
+            "failed to create the container state file: {}",
+            state_file_path.display()
+        ))?;
+        state_file
+            .write_all(state_json.as_bytes())
+            .context(format!(
+                "failed to write container state to {}",
+                state_file_path.display()
+            ))?;
         Ok(())
     }
 
@@ -89,9 +99,17 @@ impl State {
     }
 
     /// `write_pid_file` writes the PID to `pid_file_path`.
-    pub fn write_pid_file(&self, pid_file_path: &Path) -> Result<(), RuntimeError> {
-        let mut pid_file = File::create(pid_file_path)?;
-        pid_file.write_all(self.pid.to_string().as_bytes())?;
+    pub fn write_pid_file(&self, pid_file_path: &Path) -> Result<()> {
+        let mut pid_file = File::create(pid_file_path).context(format!(
+            "failed to create the PID file: {}",
+            pid_file_path.display()
+        ))?;
+        pid_file
+            .write_all(self.pid.to_string().as_bytes())
+            .context(format!(
+                "failed to write the PID to {}",
+                pid_file_path.display()
+            ))?;
         Ok(())
     }
 }

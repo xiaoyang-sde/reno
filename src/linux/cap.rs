@@ -1,25 +1,28 @@
 use std::collections::HashSet;
 
+use anyhow::{Context, Result};
 use caps::{self, CapSet, Capability as CapsCap};
 use oci_spec::runtime::{Capabilities, Capability as OCICap};
-
-use crate::error::RuntimeError;
 
 /// `set_cap` sets Linux capabilities for the container process.
 /// It drops extra capabilities for the bounding set, and raises capabilities for other sets.
 /// For more information, see the [capabilities(7)](https://man7.org/linux/man-pages/man7/capabilities.7.html)
 /// man page.
-pub fn set_cap(cap_set: CapSet, capabilities: &Capabilities) -> Result<(), RuntimeError> {
+pub fn set_cap(cap_set: CapSet, capabilities: &Capabilities) -> Result<()> {
     let capabilities: &HashSet<CapsCap> = &capabilities.iter().map(oci_cap_to_caps_cap).collect();
     match cap_set {
         CapSet::Bounding => {
-            let existing_capabilities = caps::read(None, CapSet::Bounding)?;
+            let existing_capabilities = caps::read(None, CapSet::Bounding)
+                .context("failed to read the bounding capabilities")?;
             for cap in existing_capabilities.difference(capabilities) {
-                caps::drop(None, CapSet::Bounding, *cap)?;
+                caps::drop(None, CapSet::Bounding, *cap).context(format!(
+                    "failed to drop {} from the bounding capabilities",
+                    cap
+                ))?;
             }
         }
         _ => {
-            caps::set(None, cap_set, capabilities)?;
+            caps::set(None, cap_set, capabilities).context("failed to set the capabilities")?;
         }
     }
     Ok(())

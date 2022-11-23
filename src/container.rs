@@ -18,6 +18,7 @@ use crate::{
 };
 use caps::CapSet;
 
+use anyhow::{bail, Context, Result};
 use nix::sys::stat::umask;
 use nix::unistd::setuid;
 use nix::unistd::Gid;
@@ -31,11 +32,7 @@ use oci_spec::runtime::{LinuxNamespace, Spec};
 use prctl::set_keep_capabilities;
 use std::env::set_var;
 
-fn init_container(
-    spec: &Spec,
-    state: &State,
-    namespace_list: &Vec<LinuxNamespace>,
-) -> Result<(), RuntimeError> {
+fn init_container(spec: &Spec, state: &State, namespace_list: &Vec<LinuxNamespace>) -> Result<()> {
     set_namespace(namespace_list)?;
 
     let rootfs = &state.bundle.join(spec.root().as_ref().unwrap().path());
@@ -59,13 +56,13 @@ fn init_container(
     create_default_symlink(rootfs)?;
 
     if let Some(hostname) = spec.hostname() {
-        set_hostname(hostname)?;
+        set_hostname(hostname).context("failed to set the system hostname")?;
     }
 
     Ok(())
 }
 
-fn create_container(spec: &Spec, state: &State) -> Result<(), RuntimeError> {
+fn create_container(spec: &Spec, state: &State) -> Result<()> {
     if let Some(hooks) = spec.hooks() {
         if let Some(create_container_hooks) = hooks.create_container() {
             for create_container_hook in create_container_hooks {
@@ -85,7 +82,7 @@ fn create_container(spec: &Spec, state: &State) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn start_container(spec: &Spec, state: &State) -> Result<(), RuntimeError> {
+fn start_container(spec: &Spec, state: &State) -> Result<()> {
     if let Some(hooks) = spec.hooks() {
         if let Some(start_container_hooks) = hooks.start_container() {
             for start_container_hook in start_container_hooks {
@@ -140,7 +137,7 @@ fn start_container(spec: &Spec, state: &State) -> Result<(), RuntimeError> {
             if let Some(mode) = Mode::from_bits(mode) {
                 umask(mode);
             } else {
-                return Err(RuntimeError::new(format!("invalid umask: {}", mode)));
+                bail!("invalid umask: {}", mode);
             }
         }
 
@@ -191,9 +188,7 @@ fn start_container(spec: &Spec, state: &State) -> Result<(), RuntimeError> {
 
         Ok(())
     } else {
-        Err(RuntimeError {
-            message: "container error: the 'process' doesn't exist".to_string(),
-        })
+        bail!("container error: the 'process' doesn't exist");
     }
 }
 
@@ -203,7 +198,7 @@ pub fn fork_container(
     namespace_list: &Vec<LinuxNamespace>,
     init_socket_path: &Path,
     container_socket_path: &Path,
-) -> Result<Pid, RuntimeError> {
+) -> Result<Pid> {
     clone_child(
         || {
             let mut container_socket_server = SocketServer::bind(container_socket_path).unwrap();
@@ -211,11 +206,11 @@ pub fn fork_container(
             init_socket_client.shutdown().unwrap();
             container_socket_server.listen().unwrap();
 
-            if let Err(err) = init_container(spec, state, namespace_list) {
+            if let Err(error) = init_container(spec, state, namespace_list) {
                 container_socket_server
                     .write(SocketMessage {
                         status: Status::Creating,
-                        error: Some(err),
+                        error: Some(error.to_string()),
                     })
                     .unwrap();
                 exit(1);
@@ -229,11 +224,11 @@ pub fn fork_container(
                 .unwrap();
             container_socket_server.listen().unwrap();
 
-            if let Err(err) = create_container(spec, state) {
+            if let Err(error) = create_container(spec, state) {
                 container_socket_server
                     .write(SocketMessage {
                         status: Status::Stopped,
-                        error: Some(err),
+                        error: Some(error.to_string()),
                     })
                     .unwrap();
                 exit(1);
@@ -247,11 +242,11 @@ pub fn fork_container(
                 .unwrap();
             container_socket_server.listen().unwrap();
 
-            if let Err(err) = start_container(spec, state) {
+            if let Err(error) = start_container(spec, state) {
                 container_socket_server
                     .write(SocketMessage {
                         status: Status::Stopped,
-                        error: Some(err),
+                        error: Some(error.to_string()),
                     })
                     .unwrap();
                 exit(1);
@@ -274,13 +269,11 @@ pub fn fork_container(
                     .map(|a| CString::new(a.to_string()).unwrap_or_default())
                     .collect();
 
-                if let Err(err) = execvp(&command, &arguments) {
+                if let Err(error) = execvp(&command, &arguments) {
                     container_socket_server
                         .write(SocketMessage {
                             status: Status::Stopped,
-                            error: Some(RuntimeError {
-                                message: format!("container error: {}", err),
-                            }),
+                            error: Some(error.to_string()),
                         })
                         .unwrap();
                     exit(1);

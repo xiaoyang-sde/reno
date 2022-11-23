@@ -6,6 +6,7 @@ authors = ["Xiaoyang Liu <siujoeng.lau@gmail.com>"]
 description = "Implementation of the Open Container Initiative Runtime Specification"
 
 [dependencies]
+anyhow = "1.0.66"
 caps = "0.5.5"
 clap = { version = "4.0.26", features = ["derive"] }
 nix = "0.25.0"

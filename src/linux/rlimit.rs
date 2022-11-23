@@ -1,4 +1,4 @@
-use crate::error::RuntimeError;
+use anyhow::{Context, Result};
 use oci_spec::runtime::{LinuxRlimit, LinuxRlimitType};
 use rlimit::Resource;
 
@@ -8,9 +8,12 @@ use rlimit::Resource;
 /// For example, `RLIMIT_CPU` limits the amount of CPU time the container process could consume.
 /// For more information, see the [getrlimit(2)](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
 /// man page.
-pub fn set_rlimit(rlimit: &LinuxRlimit) -> Result<(), RuntimeError> {
+pub fn set_rlimit(rlimit: &LinuxRlimit) -> Result<()> {
     let resource = linux_rlimit_type_to_resource(&rlimit.typ());
-    rlimit::setrlimit(resource, rlimit.soft(), rlimit.hard())?;
+    rlimit::setrlimit(resource, rlimit.soft(), rlimit.hard()).context(format!(
+        "failed to set resource limit for {}",
+        resource.as_name()
+    ))?;
     Ok(())
 }
 

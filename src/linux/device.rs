@@ -4,18 +4,17 @@ use nix::sys::stat::{self, Mode};
 use nix::unistd::{self, Gid, Uid};
 use oci_spec::runtime::{LinuxDevice, LinuxDeviceBuilder, LinuxDeviceType};
 
+use anyhow::{Context, Result};
 use std::fs::{self, Permissions};
 use std::os::unix;
 use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::error::RuntimeError;
-
 /// `create_default_symlink` creates symbolic links for the default
 /// [dev symbolic links](https://github.com/opencontainers/runtime-spec/blob/main/runtime-linux.md#-dev-symbolic-links)
 /// specified in OCI runtime specification.
-pub fn create_default_symlink(rootfs: &Path) -> Result<(), RuntimeError> {
+pub fn create_default_symlink(rootfs: &Path) -> Result<()> {
     let default_symlink_list = [
         ("/proc/self/fd", "/dev/fd"),
         ("/proc/self/fd/0", "/dev/stdin"),
@@ -25,12 +24,18 @@ pub fn create_default_symlink(rootfs: &Path) -> Result<(), RuntimeError> {
     ];
 
     for (source, destination) in default_symlink_list {
-        unix::fs::symlink(source, rootfs.join(destination.trim_start_matches('/')))?;
+        unix::fs::symlink(source, rootfs.join(destination.trim_start_matches('/'))).context(
+            format!(
+                "failed to create default symlink from {} to {}",
+                source, destination
+            ),
+        )?;
     }
     Ok(())
 }
 
-fn to_sflag(flag: LinuxDeviceType) -> SFlag {
+/// `linux_device_type_to_sflag` converts [LinuxDeviceType] to [SFlag].
+fn linux_device_type_to_sflag(flag: LinuxDeviceType) -> SFlag {
     match flag {
         LinuxDeviceType::C | LinuxDeviceType::U => SFlag::S_IFCHR,
         LinuxDeviceType::B => SFlag::S_IFBLK,
@@ -42,22 +47,37 @@ fn to_sflag(flag: LinuxDeviceType) -> SFlag {
 /// `create_device` creates a Linux device with `mknod`.
 /// For more information, see the [mknod(2)](https://man7.org/linux/man-pages/man2/mknod.2.html)
 /// man page.
-pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeError> {
+pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<()> {
     let path = &rootfs.join(device.path().display().to_string().trim_start_matches('/'));
-
     stat::mknod(
         path,
-        to_sflag(device.typ()),
+        linux_device_type_to_sflag(device.typ()),
         Mode::from_bits_truncate(device.file_mode().unwrap_or(0o066)),
         stat::makedev(device.major() as u64, device.minor() as u64),
-    )?;
-    fs::set_permissions(path, Permissions::from_mode(0o660))?;
+    )
+    .context(format!(
+        "failed to create {} with mknod",
+        device.path().display(),
+    ))?;
+
+    fs::set_permissions(path, Permissions::from_mode(0o660)).context(format!(
+        "failed to change the permission of {}",
+        path.display(),
+    ))?;
 
     if let Some(gid) = device.gid() {
-        unistd::chown(path, None, Some(Gid::from_raw(gid)))?;
+        unistd::chown(path, None, Some(Gid::from_raw(gid))).context(format!(
+            "failed to create change the ownership of {} to group {}",
+            device.path().display(),
+            gid,
+        ))?;
     }
     if let Some(uid) = device.uid() {
-        unistd::chown(path, Some(Uid::from_raw(uid)), None)?;
+        unistd::chown(path, Some(Uid::from_raw(uid)), None).context(format!(
+            "failed to create change the ownership of {} to user {}",
+            device.path().display(),
+            uid,
+        ))?;
     }
     Ok(())
 }
@@ -65,7 +85,7 @@ pub fn create_device(rootfs: &Path, device: &LinuxDevice) -> Result<(), RuntimeE
 /// `create_default_device` creates devices for the
 /// [default devices](https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md#default-devices)
 /// specified in OCI runtime specification.
-pub fn create_default_device(rootfs: &Path) -> Result<(), RuntimeError> {
+pub fn create_default_device(rootfs: &Path) -> Result<()> {
     let default_device_list: [(&str, LinuxDeviceType, u32, u32, u32, u32, u32); 6] = [
         ("/dev/null", LinuxDeviceType::C, 1, 3, 0o066, 0, 0),
         ("/dev/zero", LinuxDeviceType::C, 1, 5, 0o066, 0, 0),

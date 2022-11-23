@@ -1,7 +1,6 @@
 use std::os::unix::prelude::AsRawFd;
 
-use crate::error::RuntimeError;
-
+use anyhow::{Context, Result};
 use nix::{
     fcntl::{self, OFlag},
     sched,
@@ -13,11 +12,15 @@ use oci_spec::runtime::{LinuxNamespace, LinuxNamespaceType};
 /// `set_namespace` moves the container process into namespaces associated with different paths.
 /// For more information, see the [setns(2)](https://man7.org/linux/man-pages/man2/setns.2.html)
 /// man page.
-pub fn set_namespace(namespace_list: &Vec<LinuxNamespace>) -> Result<(), RuntimeError> {
+pub fn set_namespace(namespace_list: &Vec<LinuxNamespace>) -> Result<()> {
     for namespace in namespace_list {
         if let Some(path) = namespace.path() {
-            let fd = fcntl::open(path.as_os_str(), OFlag::empty(), Mode::empty())?;
-            sched::setns(fd.as_raw_fd(), linux_namespace_to_clone_flags(namespace))?;
+            let fd = fcntl::open(path.as_os_str(), OFlag::empty(), Mode::empty()).context(
+                format!("failed to open the namespace file: {}", path.display()),
+            )?;
+            sched::setns(fd.as_raw_fd(), linux_namespace_to_clone_flags(namespace)).context(
+                format!("failed to enter the namespace file: {}", path.display()),
+            )?;
         }
     }
     Ok(())

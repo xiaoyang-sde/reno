@@ -9,9 +9,9 @@ mod socket;
 mod state;
 
 use crate::cli::{create, delete, kill, start, state, Cli, CliSubcommand};
-use crate::error::RuntimeError;
+use anyhow::Result;
 
-fn main() -> Result<(), RuntimeError> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     match &cli.command {
         CliSubcommand::State { id } => state(id)?,

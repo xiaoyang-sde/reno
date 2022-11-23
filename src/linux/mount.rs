@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use nix::mount::{self, MntFlags, MsFlags};
 use nix::unistd;
 use oci_spec::runtime::Mount;
@@ -10,14 +11,15 @@ use crate::error::RuntimeError;
 /// `mount_rootfs` changes the propagation type of the root mount
 /// from "shared" to "private", and then remounts the root mount to
 /// clone it in the current namespace.
-pub fn mount_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
+pub fn mount_rootfs(rootfs: &Path) -> Result<()> {
     mount::mount(
         None::<&str>,
         "/",
         None::<&str>,
         MsFlags::MS_PRIVATE | MsFlags::MS_REC,
         None::<&str>,
-    )?;
+    )
+    .context("failed to change the propagation type of the root mount to private")?;
 
     mount::mount(
         Some(rootfs),
@@ -25,20 +27,25 @@ pub fn mount_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
         None::<&str>,
         MsFlags::MS_BIND | MsFlags::MS_REC,
         None::<&str>,
-    )?;
+    )
+    .context("failed to remount the root mount")?;
 
     Ok(())
 }
 
 /// `pivot_rootfs` changes the root mount in the mount namespace.
-pub fn pivot_rootfs(rootfs: &Path) -> Result<(), RuntimeError> {
-    unistd::chdir(rootfs)?;
-    fs::create_dir_all(rootfs.join("root_archive"))?;
+pub fn pivot_rootfs(rootfs: &Path) -> Result<()> {
+    unistd::chdir(rootfs).context("failed to invoke chdir")?;
+    fs::create_dir_all(rootfs.join("root_archive")).context("failed to create ./root_archive")?;
+
     // `pivot_root` moves the root mount to `root_archive` and makes `rootfs` as the new root mount
-    unistd::pivot_root(rootfs.as_os_str(), rootfs.join("root_archive").as_os_str())?;
-    mount::umount2("./root_archive", MntFlags::MNT_DETACH)?;
-    fs::remove_dir_all("./root_archive")?;
-    unistd::chdir("/")?;
+    unistd::pivot_root(rootfs.as_os_str(), rootfs.join("root_archive").as_os_str())
+        .context("failed to invoke pivot_root")?;
+
+    mount::umount2("./root_archive", MntFlags::MNT_DETACH)
+        .context("failed to umount ./root_archive")?;
+    fs::remove_dir_all("./root_archive").context("failed to remove ./root_archive")?;
+    unistd::chdir("/").context("failed to invoke chdir")?;
     Ok(())
 }
 
