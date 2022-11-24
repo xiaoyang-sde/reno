@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Xiaoyang Liu <siujoeng.lau@gmail.com>"]
 description = "Implementation of the Open Container Initiative Runtime Specification"
+license = "MIT"
+readme = "README.md"
+documentation = "https://docs.rs/reno"
+homepage = "https://github.com/xiaoyang-sde/reno"
+repository = "https://github.com/xiaoyang-sde/reno"
+
+[profile.release]
+lto = "thin"
 
 [dependencies]
 anyhow = "1.0.66"
