@@ -1,4 +1,4 @@
-use crate::{error::RuntimeError, state::State};
+use crate::state::State;
 use anyhow::{bail, Context, Result};
 use oci_spec::runtime::Hook;
 use std::{
@@ -32,9 +32,8 @@ pub fn run_hook(state: &State, hook: &Hook) -> Result<()> {
         .context("failed to spawn the hook process")?;
 
     if let Some(mut stdin) = hook_process.stdin.as_ref() {
-        let state_json = serde_json::to_string(state).map_err(|err| RuntimeError {
-            message: format!("failed to serialize the state to JSON: {}", err),
-        })?;
+        let state_json =
+            serde_json::to_string(state).context("failed to serialize the state to JSON")?;
         stdin
             .write_all(state_json.as_bytes())
             .context("failed to write the state to the hook standard input")?;

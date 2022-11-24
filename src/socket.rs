@@ -14,6 +14,12 @@ pub struct SocketMessage {
     pub error: Option<String>,
 }
 
+impl SocketMessage {
+    pub fn new(status: Status, error: Option<String>) -> Self {
+        SocketMessage { status, error }
+    }
+}
+
 pub struct SocketServer {
     path: PathBuf,
     listener: UnixListener,

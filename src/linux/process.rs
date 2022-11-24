@@ -13,8 +13,8 @@ use crate::linux::namespace;
 /// For more information, see the [clone(2)](https://man7.org/linux/man-pages/man2/clone.2.html)
 /// man page.
 pub fn clone_child(
-    child_fn: impl FnMut() -> isize,
     namespace_list: &[LinuxNamespace],
+    child_fn: impl FnMut() -> isize,
 ) -> Result<Pid> {
     const STACK_SIZE: usize = 4 * 1024 * 1024;
     let mut stack: [u8; STACK_SIZE] = [0; STACK_SIZE];

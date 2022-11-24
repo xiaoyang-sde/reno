@@ -1,17 +1,17 @@
-use clap::{Parser, Subcommand};
-
-use nix::unistd::Pid;
-
-use crate::container::fork_container;
-use crate::hook::run_hook;
+use crate::container::fork;
+use crate::hook;
 use crate::socket::{SocketClient, SocketServer};
 use crate::state::State;
 use crate::state::Status;
+
 use anyhow::{bail, Context, Result};
+use clap::{Parser, Subcommand};
 use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 use oci_spec::runtime::Spec;
-use std::fs::{self};
+use std::fs;
 use std::path::Path;
+
 const RENO_ROOT: &str = "/tmp/reno";
 
 #[derive(Parser, Debug)]
@@ -94,7 +94,7 @@ pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<()> {
     let mut init_socket_server = SocketServer::bind(&init_socket_path)?;
 
     let container_socket_path = container_root.join("container.sock");
-    let pid = fork_container(
+    let pid = fork::fork_container(
         &spec,
         &state,
         &namespaces,
@@ -112,7 +112,7 @@ pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<()> {
         if let Some(hooks) = spec.hooks() {
             if let Some(create_runtime_hooks) = hooks.create_runtime() {
                 for create_runtime_hook in create_runtime_hooks {
-                    run_hook(&state, create_runtime_hook)
+                    hook::run_hook(&state, create_runtime_hook)
                         .context("failed to invoke the create_runtime hook")?;
                 }
             }
@@ -159,7 +159,8 @@ pub fn start(id: &str) -> Result<()> {
     if let Some(hooks) = spec.hooks() {
         if let Some(pre_start_hooks) = hooks.prestart() {
             for pre_start_hook in pre_start_hooks {
-                run_hook(&state, pre_start_hook).context("failed to invoke the pre_start hook")?;
+                hook::run_hook(&state, pre_start_hook)
+                    .context("failed to invoke the pre_start hook")?;
             }
         }
     }
@@ -176,7 +177,7 @@ pub fn start(id: &str) -> Result<()> {
         if let Some(hooks) = spec.hooks() {
             if let Some(post_start_hooks) = hooks.poststart() {
                 for post_start_hook in post_start_hooks {
-                    run_hook(&state, post_start_hook)
+                    hook::run_hook(&state, post_start_hook)
                         .context("failed to invoke the post_start hook")?;
                 }
             }
@@ -234,11 +235,11 @@ pub fn delete(id: &str) -> Result<()> {
 
     let bundle_spec = state.bundle.join("config.json");
     let spec = Spec::load(bundle_spec).context("failed to load the bundle configuration")?;
-
     if let Some(hooks) = spec.hooks() {
         if let Some(post_stop_hooks) = hooks.poststop() {
             for post_stop_hook in post_stop_hooks {
-                run_hook(&state, post_stop_hook).context("failed to invoke the post_stop hook")?;
+                hook::run_hook(&state, post_stop_hook)
+                    .context("failed to invoke the post_stop hook")?;
             }
         }
     }

@@ -6,8 +6,6 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::Path;
 
-use crate::error::RuntimeError;
-
 /// `mount_rootfs` changes the propagation type of the root mount
 /// from "shared" to "private", and then remounts the root mount to
 /// clone it in the current namespace.
@@ -107,7 +105,7 @@ fn mount_to_msflags(mount: &Mount) -> (MsFlags, OsString) {
 
 /// `custom_mount` accepts a [Mount] struct defined in the bundle configuration
 /// and mounts the source to the destination with specified options.
-pub fn custom_mount(rootfs: &Path, mount: &Mount) -> Result<(), RuntimeError> {
+pub fn custom_mount(rootfs: &Path, mount: &Mount) -> Result<()> {
     let destination = rootfs.join(
         mount
             .destination()
