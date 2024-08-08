@@ -50,8 +50,9 @@ pub fn create_container(spec: &Spec, state: &State) -> Result<()> {
         }
     }
 
-    let rootfs = &state.bundle.join(spec.root().as_ref().unwrap().path());
-    mount::pivot_rootfs(rootfs)?;
+    let rootfs = state.bundle.join(spec.root().as_ref().unwrap().path());
+    let readonly = spec.root().as_ref().unwrap().readonly().unwrap_or_default();
+    mount::pivot_rootfs(&rootfs, readonly)?;
 
     if let Some(linux) = spec.linux() {
         if let Some(sysctl) = linux.sysctl() {

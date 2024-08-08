@@ -33,7 +33,7 @@ pub fn mount_rootfs(rootfs: &Path) -> Result<()> {
 }
 
 /// `pivot_rootfs` changes the root mount in the mount namespace.
-pub fn pivot_rootfs(rootfs: &Path) -> Result<()> {
+pub fn pivot_rootfs(rootfs: &Path, readonly: bool) -> Result<()> {
     unistd::chdir(rootfs).context("failed to invoke chdir")?;
     fs::create_dir_all(rootfs.join("root_archive")).context("failed to create ./root_archive")?;
 
@@ -45,6 +45,16 @@ pub fn pivot_rootfs(rootfs: &Path) -> Result<()> {
         .context("failed to umount ./root_archive")?;
     fs::remove_dir_all("./root_archive").context("failed to remove ./root_archive")?;
     unistd::chdir("/").context("failed to invoke chdir")?;
+
+    if readonly {
+        mount::mount(
+            None::<&str>,
+            "/",
+            None::<&str>,
+            MsFlags::MS_RDONLY | MsFlags::MS_REMOUNT | MsFlags::MS_BIND,
+            None::<&str>,
+        )?;
+    }
     Ok(())
 }
 
@@ -54,7 +64,7 @@ fn mount_to_msflags(mount: &Mount) -> (MsFlags, OsString) {
 
     if let Some(options) = &mount.options() {
         for option in options {
-            if let Some((is_clear, flag)) = match option.as_str() {
+            if let Some((is_clear, flag)) = match option.as_ref() {
                 "defaults" => Some((false, MsFlags::empty())),
                 "ro" => Some((false, MsFlags::MS_RDONLY)),
                 "rw" => Some((true, MsFlags::MS_RDONLY)),
@@ -96,7 +106,7 @@ fn mount_to_msflags(mount: &Mount) -> (MsFlags, OsString) {
                     mount_flags |= flag;
                 }
             } else {
-                mount_data.push(option.as_str());
+                mount_data.push(option.as_ref());
             }
         }
     }
