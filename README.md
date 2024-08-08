@@ -3,11 +3,11 @@
 [![Crates.io](https://img.shields.io/crates/v/reno?style=for-the-badge&logo=rust)](https://crates.io/crates/reno)
 [![Crates.io](https://img.shields.io/crates/d/reno?style=for-the-badge&logo=rust)](https://crates.io/crates/reno)
 
-Reno is an experimental Linux container runtime that implements the [OCI runtime specification](https://github.com/opencontainers/runtime-spec) with Rust. Reno supports a subset of features described in the specification, such as namespaces, capabilities, mounts, and hooks.
+Reno is an experimental Linux container runtime that implements the [OCI runtime specification](https://github.com/opencontainers/runtime-spec) with Rust. It supports a subset of the specification's features, including namespaces, capabilities, mounts, and hooks.
 
 ## Installation
 
-```shell
+```console
 cargo install reno
 ```
 
