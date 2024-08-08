@@ -25,9 +25,11 @@ pub fn clone_child(
         .reduce(|flag_1, flag_2| flag_1 | flag_2)
         .unwrap_or(CloneFlags::empty());
 
-    let pid = sched::clone(Box::new(child_fn), &mut stack, clone_flags, None)
-        .context("failed to clone the container process")?;
-    Ok(pid)
+    unsafe {
+        let pid = sched::clone(Box::new(child_fn), &mut stack, clone_flags, None)
+            .context("failed to clone the container process")?;
+        Ok(pid)
+    }
 }
 
 /// `inspect_process` inspects the status of the process in `/proc/<pid>/stat`

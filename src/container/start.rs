@@ -7,7 +7,7 @@ use anyhow::Context;
 use caps::CapSet;
 
 use anyhow::{bail, Result};
-use nix::errno::Errno;
+use nix::sys::prctl;
 use nix::sys::stat;
 use nix::sys::stat::Mode;
 use nix::unistd;
@@ -50,9 +50,7 @@ pub fn start_container(spec: &Spec, state: &State) -> Result<()> {
             }
         }
 
-        prctl::set_keep_capabilities(true)
-            .map_err(Errno::from_i32)
-            .context("failed to set PR_SET_KEEPCAPS to true")?;
+        prctl::set_keepcaps(true).context("failed to set PR_SET_KEEPCAPS to true")?;
         unistd::setgid(Gid::from_raw(process.user().gid()))
             .context(format!("failed to set gid to {}", process.user().gid()))?;
 
@@ -75,9 +73,7 @@ pub fn start_container(spec: &Spec, state: &State) -> Result<()> {
         unistd::setuid(Uid::from_raw(process.user().uid()))
             .context(format!("failed to set uid to {}", process.user().gid()))?;
 
-        prctl::set_keep_capabilities(false)
-            .map_err(Errno::from_i32)
-            .context("failed to set PR_SET_KEEPCAPS to false")?;
+        prctl::set_keepcaps(false).context("failed to set PR_SET_KEEPCAPS to false")?;
 
         if let Some(capabilities) = process.capabilities() {
             let capabilities_list = [

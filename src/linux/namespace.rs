@@ -1,4 +1,4 @@
-use std::os::unix::prelude::AsRawFd;
+use std::os::fd::BorrowedFd;
 
 use anyhow::{Context, Result};
 use nix::{
@@ -18,9 +18,14 @@ pub fn set_namespace(namespace_list: &[LinuxNamespace]) -> Result<()> {
             let fd = fcntl::open(path.as_os_str(), OFlag::empty(), Mode::empty()).context(
                 format!("failed to open the namespace file: {}", path.display()),
             )?;
-            sched::setns(fd.as_raw_fd(), linux_namespace_to_clone_flags(namespace)).context(
-                format!("failed to enter the namespace file: {}", path.display()),
-            )?;
+            sched::setns(
+                unsafe { BorrowedFd::borrow_raw(fd) },
+                linux_namespace_to_clone_flags(namespace),
+            )
+            .context(format!(
+                "failed to enter the namespace file: {}",
+                path.display()
+            ))?;
         }
     }
     Ok(())
@@ -38,5 +43,6 @@ pub fn linux_namespace_to_clone_flags(namespace: &LinuxNamespace) -> CloneFlags 
         LinuxNamespaceType::User => CloneFlags::CLONE_NEWUSER,
         LinuxNamespaceType::Pid => CloneFlags::CLONE_NEWPID,
         LinuxNamespaceType::Network => CloneFlags::CLONE_NEWNET,
+        LinuxNamespaceType::Time => CloneFlags::empty(),
     }
 }

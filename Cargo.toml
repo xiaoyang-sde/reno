@@ -3,7 +3,7 @@ name = "reno"
 version = "0.1.0"
 edition = "2021"
 authors = ["Xiaoyang Liu <siujoeng.lau@gmail.com>"]
-description = "Implementation of the Open Container Initiative Runtime Specification"
+description = "Experimental Linux container runtime that implements the OCI runtime specification"
 license = "MIT"
 readme = "README.md"
 documentation = "https://docs.rs/reno"
@@ -14,13 +14,11 @@ repository = "https://github.com/xiaoyang-sde/reno"
 lto = "thin"
 
 [dependencies]
-anyhow = "1.0.66"
+anyhow = "1.0.86"
 caps = "0.5.5"
-clap = { version = "4.0.26", features = ["derive"] }
-nix = "0.25.0"
-oci-spec = "0.5.8"
-prctl = "1.0.0"
-procfs = "0.14.1"
-rlimit = "0.8.3"
-serde = "1.0.147"
-serde_json = "1.0.89"
+clap = { version = "4.5.13", features = ["derive"] }
+nix = { version = "0.29.0", features = ["fs", "hostname", "mount", "process", "resource", "sched", "signal", "user"] }
+oci-spec = "0.6.8"
+procfs = "0.16.0"
+serde = "1.0.205"
+serde_json = "1.0.122"
