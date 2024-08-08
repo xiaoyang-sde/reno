@@ -1,12 +1,13 @@
-use anyhow::{Context, Result};
-use procfs::process::ProcState;
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
 };
+
+use anyhow::{Context, Result};
+use procfs::process::ProcState;
+use serde::{Deserialize, Serialize};
 
 use crate::linux::process::inspect_process;
 

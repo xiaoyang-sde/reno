@@ -1,15 +1,15 @@
-use nix::sys::stat::SFlag;
-use nix::sys::stat::{self, Mode};
-
-use nix::unistd::{self, Gid, Uid};
-use oci_spec::runtime::{LinuxDevice, LinuxDeviceBuilder, LinuxDeviceType};
+use std::{
+    fs::{self, Permissions},
+    os::{unix, unix::prelude::PermissionsExt},
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
-use std::fs::{self, Permissions};
-use std::os::unix;
-use std::os::unix::prelude::PermissionsExt;
-use std::path::Path;
-use std::path::PathBuf;
+use nix::{
+    sys::stat::{self, Mode, SFlag},
+    unistd::{self, Gid, Uid},
+};
+use oci_spec::runtime::{LinuxDevice, LinuxDeviceBuilder, LinuxDeviceType};
 
 /// `create_default_symlink` creates symbolic links for the default
 /// [dev symbolic links](https://github.com/opencontainers/runtime-spec/blob/main/runtime-linux.md#-dev-symbolic-links)

@@ -1,15 +1,15 @@
-use crate::container::create;
-use crate::container::start;
+use std::{ffi::CString, path::Path, process::exit};
+
+use anyhow::{bail, Result};
+use nix::unistd::{self, Pid};
+use oci_spec::runtime::{LinuxNamespace, Spec};
+
 use crate::{
+    container::{create, start},
     linux::process,
     socket::{SocketClient, SocketMessage, SocketServer},
     state::{State, Status},
 };
-use anyhow::bail;
-use anyhow::Result;
-use nix::unistd::{self, Pid};
-use oci_spec::runtime::{LinuxNamespace, Spec};
-use std::{ffi::CString, path::Path, process::exit};
 
 /// `pipeline` initializes the container environment, run hooks, and start the container process.
 /// The pipeline contains these phases:

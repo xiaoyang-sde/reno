@@ -1,6 +1,6 @@
+use std::{collections::HashMap, fs, path::Path};
+
 use anyhow::{Context, Result};
-use std::fs;
-use std::{collections::HashMap, path::Path};
 
 /// `set_sysctl` modifies kernel parameters for the container.
 /// The parameters are listed under `/proc/sys/`, such as

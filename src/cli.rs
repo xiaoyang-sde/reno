@@ -1,16 +1,19 @@
-use crate::container::fork;
-use crate::hook;
-use crate::socket::{SocketClient, SocketServer};
-use crate::state::State;
-use crate::state::Status;
+use std::{fs, path::Path};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nix::sys::signal::{self, Signal};
-use nix::unistd::Pid;
+use nix::{
+    sys::signal::{self, Signal},
+    unistd::Pid,
+};
 use oci_spec::runtime::Spec;
-use std::fs;
-use std::path::Path;
+
+use crate::{
+    container::fork,
+    hook,
+    socket::{SocketClient, SocketServer},
+    state::{State, Status},
+};
 
 const RENO_ROOT: &str = "/tmp/reno";
 

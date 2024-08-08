@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
-use nix::sys::resource::setrlimit;
-use nix::sys::resource::Resource;
+use nix::sys::resource::{setrlimit, Resource};
 use oci_spec::runtime::{PosixRlimit, PosixRlimitType};
 
 /// `set_rlimit` sets a soft and hard limit for each resource.

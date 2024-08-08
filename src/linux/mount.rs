@@ -1,10 +1,11 @@
+use std::{ffi::OsString, fs, path::Path};
+
 use anyhow::{Context, Result};
-use nix::mount::{self, MntFlags, MsFlags};
-use nix::unistd;
+use nix::{
+    mount::{self, MntFlags, MsFlags},
+    unistd,
+};
 use oci_spec::runtime::Mount;
-use std::ffi::OsString;
-use std::fs;
-use std::path::Path;
 
 /// `mount_rootfs` changes the propagation type of the root mount
 /// from "shared" to "private", and then remounts the root mount to

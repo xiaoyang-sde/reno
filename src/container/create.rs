@@ -1,10 +1,11 @@
-use crate::linux::hostname;
-use crate::linux::namespace;
-use crate::linux::sysctl;
-use crate::{hook, linux::device, linux::mount, state::State};
-
 use anyhow::Result;
 use oci_spec::runtime::{LinuxNamespace, Spec};
+
+use crate::{
+    hook,
+    linux::{device, hostname, mount, namespace, sysctl},
+    state::State,
+};
 
 pub fn init_environment(
     spec: &Spec,

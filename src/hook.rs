@@ -1,11 +1,13 @@
-use crate::state::State;
-use anyhow::{bail, Context, Result};
-use oci_spec::runtime::Hook;
 use std::{
     io::Write,
     os::unix::process::CommandExt,
     process::{Command, Stdio},
 };
+
+use anyhow::{bail, Context, Result};
+use oci_spec::runtime::Hook;
+
+use crate::state::State;
 
 /// `run_hook` accepts and invokes a [Hook], which is a command that is run at a particular event
 /// in the lifecycle of a container.

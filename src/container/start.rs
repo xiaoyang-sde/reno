@@ -1,20 +1,19 @@
-use crate::hook;
-use crate::linux::cap;
-use crate::linux::rlimit;
-use crate::linux::sysctl;
-use crate::state::State;
-use anyhow::Context;
-use caps::CapSet;
-
-use anyhow::{bail, Result};
-use nix::sys::prctl;
-use nix::sys::stat;
-use nix::sys::stat::Mode;
-use nix::unistd;
-use nix::unistd::Gid;
-use nix::unistd::Uid;
-use oci_spec::runtime::Spec;
 use std::env;
+
+use anyhow::{bail, Context, Result};
+use caps::CapSet;
+use nix::{
+    sys::{prctl, stat, stat::Mode},
+    unistd,
+    unistd::{Gid, Uid},
+};
+use oci_spec::runtime::Spec;
+
+use crate::{
+    hook,
+    linux::{cap, rlimit, sysctl},
+    state::State,
+};
 
 pub fn start_container(spec: &Spec, state: &State) -> Result<()> {
     if let Some(hooks) = spec.hooks() {

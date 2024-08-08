@@ -7,8 +7,9 @@ mod linux;
 mod socket;
 mod state;
 
-use crate::cli::{Cli, CliSubcommand};
 use anyhow::Result;
+
+use crate::cli::{Cli, CliSubcommand};
 
 fn main() -> Result<()> {
     match &Cli::parse().command {
