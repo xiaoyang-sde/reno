@@ -12,7 +12,7 @@ use anyhow::Result;
 use crate::cli::{Cli, CliSubcommand};
 
 fn main() -> Result<()> {
-    match &Cli::parse().command {
+    match Cli::parse().command {
         CliSubcommand::State { id } => cli::state(id),
         CliSubcommand::Create {
             id,
@@ -21,6 +21,6 @@ fn main() -> Result<()> {
         } => cli::create(id, bundle, pid_file),
         CliSubcommand::Start { id } => cli::start(id),
         CliSubcommand::Kill { id, signal } => cli::kill(id, signal),
-        CliSubcommand::Delete { id } => cli::delete(id),
+        CliSubcommand::Delete { id, force } => cli::delete(id, force),
     }
 }

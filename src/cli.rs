@@ -47,13 +47,20 @@ pub enum CliSubcommand {
     Kill { id: String, signal: String },
 
     #[command(about = "delete a container")]
-    Delete { id: String },
+    Delete {
+        id: String,
+
+        #[arg(long)]
+        force: bool,
+    },
 }
 
-pub fn state(id: &str) -> Result<()> {
+pub fn state(id: String) -> Result<()> {
     let container_root = Path::new(RENO_ROOT).join(id);
     let mut state = State::load(&container_root)?;
-    state.refresh();
+    if state.status != Status::Created {
+        state.refresh();
+    }
 
     let serialized_state =
         serde_json::to_string(&state).context("failed to serialize the state")?;
@@ -63,8 +70,8 @@ pub fn state(id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<()> {
-    let bundle = Path::new(bundle);
+pub fn create(id: String, bundle: String, pid_file: Option<String>) -> Result<()> {
+    let bundle = Path::new(&bundle);
     let bundle_exists = bundle
         .try_exists()
         .context("failed to check if the bundle exists")?;
@@ -75,7 +82,7 @@ pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<()> {
     let bundle_spec = bundle.join("config.json");
     let spec = Spec::load(bundle_spec).context("failed to load the bundle configuration")?;
 
-    let container_root = Path::new(RENO_ROOT).join(id);
+    let container_root = Path::new(RENO_ROOT).join(&id);
     let container_root_exists = container_root
         .try_exists()
         .context("failed to check if the container exists")?;
@@ -85,7 +92,7 @@ pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<()> {
 
     fs::create_dir_all(&container_root).context("failed to create the container root path")?;
 
-    let mut state = State::new(id.to_string(), bundle.to_path_buf());
+    let mut state = State::new(id, bundle.to_path_buf());
     state.persist(&container_root)?;
 
     let namespaces = match &spec.linux() {
@@ -135,7 +142,7 @@ pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<()> {
         state.status = Status::Created;
         state.persist(&container_root)?;
         if let Some(pid_file) = pid_file {
-            state.write_pid_file(Path::new(pid_file))?;
+            state.write_pid_file(Path::new(&pid_file))?;
         }
         Ok(())
     } else if let Some(error) = container_message.error {
@@ -145,7 +152,7 @@ pub fn create(id: &str, bundle: &str, pid_file: &Option<String>) -> Result<()> {
     }
 }
 
-pub fn start(id: &str) -> Result<()> {
+pub fn start(id: String) -> Result<()> {
     let container_root = Path::new(RENO_ROOT).join(id);
     container_root
         .try_exists()
@@ -193,7 +200,7 @@ pub fn start(id: &str) -> Result<()> {
     }
 }
 
-pub fn kill(id: &str, signal: &str) -> Result<()> {
+pub fn kill(id: String, signal: String) -> Result<()> {
     let container_root = Path::new(RENO_ROOT).join(id);
     container_root
         .try_exists()
@@ -204,7 +211,7 @@ pub fn kill(id: &str, signal: &str) -> Result<()> {
         bail!("the container is not in the 'Created' or 'Running' state");
     }
 
-    let signal = match signal {
+    let signal = match signal.as_ref() {
         "HUP" => Signal::SIGHUP,
         "INT" => Signal::SIGINT,
         "TERM" => Signal::SIGTERM,
@@ -223,15 +230,22 @@ pub fn kill(id: &str, signal: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn delete(id: &str) -> Result<()> {
+pub fn delete(id: String, force: bool) -> Result<()> {
     let container_root = Path::new(RENO_ROOT).join(id);
     container_root
         .try_exists()
         .context("the container doesn't exist")?;
 
-    let state = State::load(&container_root)?;
+    let mut state = State::load(&container_root)?;
+    state.refresh();
+
     if state.status != Status::Stopped {
-        bail!("the container is not in the 'Stopped' state");
+        if force {
+            let pid = Pid::from_raw(state.pid);
+            signal::kill(pid, Signal::SIGKILL).context("failed to kill the container")?;
+        } else {
+            bail!("the container is not in the 'Stopped' state");
+        }
     }
 
     fs::remove_dir_all(container_root).context("failed to remove the container")?;
